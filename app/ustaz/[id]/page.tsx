@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import Header from '@/app/components/Header'
+import Footer from '@/app/components/Footer'
 
 interface UstazProfile {
   id: string
@@ -14,15 +17,17 @@ interface UstazProfile {
   hourly_rate: number
   bio: string | null
   available_days: string[] | null
+  available_times?: string[] | null
+  profile_photo_url: string | null
   created_at: string
 }
 
-export default function UstazProfile({ params }: { params: Promise<{ id: string }> }) {
+export default function UstazProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [ustaz, setUstaz] = useState<UstazProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  
+
   // Inquiry form state
   const [showInquiryForm, setShowInquiryForm] = useState(false)
   const [inquiryData, setInquiryData] = useState({
@@ -38,16 +43,15 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
     async function fetchUstaz() {
       try {
         const { data, error } = await supabase
-          .from('ustaz_profiles')
+          .from('tutor_profiles')
           .select('*')
           .eq('id', id)
           .single()
 
         if (error) throw error
-
         setUstaz(data)
       } catch (err) {
-        setError('Ustaz not found.')
+        setError('Tutor not found.')
         console.error(err)
       } finally {
         setIsLoading(false)
@@ -69,22 +73,86 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
     }
 
     try {
-      const { error } = await supabase
+      const payload = {
+        tutor_id: id,
+        family_name: inquiryData.family_name.trim(),
+        family_phone: inquiryData.family_phone.trim(),
+        message: inquiryData.message.trim()
+      }
+
+      let { error } = await supabase
         .from('inquiries')
-        .insert([{
-          ustaz_id: id,
-          family_name: inquiryData.family_name,
-          family_phone: inquiryData.family_phone,
-          message: inquiryData.message
-        }])
+        .insert([payload])
+
+      // Backward-compat fallback if table still uses ustaz_id.
+      if (error && error.message.toLowerCase().includes('tutor_id')) {
+        const fallback = await supabase
+          .from('inquiries')
+          .insert([{
+            ustaz_id: id,
+            family_name: inquiryData.family_name,
+            family_phone: inquiryData.family_phone,
+            message: inquiryData.message
+          }])
+        error = fallback.error
+      }
 
       if (error) throw error
 
       setInquirySuccess(true)
       setShowInquiryForm(false)
     } catch (err) {
-      setInquiryError('Something went wrong. Please try again.')
       console.error(err)
+      const errorMessage =
+        typeof err === 'object' &&
+        err !== null &&
+        'message' in err &&
+        typeof (err as { message?: unknown }).message === 'string'
+          ? (err as { message: string }).message.toLowerCase()
+          : ''
+      const errorCode =
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        typeof (err as { code?: unknown }).code === 'string'
+          ? (err as { code: string }).code.toLowerCase()
+          : ''
+      const missingTableError =
+        errorCode === '42p01' ||
+        errorCode === 'pgrst205' ||
+        errorMessage.includes('relation "inquiries" does not exist') ||
+        errorMessage.includes('could not find the table') ||
+        errorMessage.includes("table 'inquiries'") ||
+        errorMessage.includes('does not exist')
+
+      if (
+        errorMessage.includes('row-level security') ||
+        errorMessage.includes('permission denied') ||
+        errorCode === '42501'
+      ) {
+        setInquiryError(
+          'Contact form permissions are not configured. Please apply the RLS policies in supabase/inquiries_schema.sql.'
+        )
+      } else if (missingTableError) {
+        setInquiryError(
+          'Contact form is not configured yet. Run supabase/inquiries_schema.sql in Supabase SQL Editor first.'
+        )
+      } else if (errorMessage.includes('violates foreign key constraint')) {
+        setInquiryError(
+          'This tutor profile is not fully synced yet. Please refresh and try again.'
+        )
+      } else {
+        const readableError =
+          typeof err === 'object' &&
+          err !== null &&
+          'message' in err &&
+          typeof (err as { message?: unknown }).message === 'string'
+            ? (err as { message: string }).message
+            : ''
+        setInquiryError(
+          readableError ? `Could not send inquiry: ${readableError}` : 'Something went wrong. Please try again.'
+        )
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -94,13 +162,7 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm">
-          <nav className="max-w-6xl mx-auto px-4 py-4">
-            <Link href="/" className="text-2xl font-bold text-emerald-700">
-              UstazConnect
-            </Link>
-          </nav>
-        </header>
+        <Header />
         <div className="text-center py-12">
           <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading profile...</p>
@@ -112,58 +174,49 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
   // Error state
   if (error || !ustaz) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm">
-          <nav className="max-w-6xl mx-auto px-4 py-4">
-            <Link href="/" className="text-2xl font-bold text-emerald-700">
-              UstazConnect
-            </Link>
-          </nav>
-        </header>
-        <div className="max-w-2xl mx-auto px-4 py-12 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Ustaz Not Found</h1>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Header />
+        <div className="max-w-2xl mx-auto px-4 py-12 text-center flex-1">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Tutor Not Found</h1>
           <p className="text-gray-600 mb-6">The profile you are looking for does not exist.</p>
           <Link href="/find-ustaz" className="text-emerald-600 hover:text-emerald-700">
-            ← Browse all ustazs
+            ← Browse all tutors
           </Link>
         </div>
+        <Footer />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <nav className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="text-2xl font-bold text-emerald-700">
-            UstazConnect
-          </Link>
-          <div className="flex gap-4">
-            <Link href="/find-ustaz" className="text-gray-600 hover:text-emerald-700 transition">
-              Find Ustaz
-            </Link>
-            <Link href="/register-ustaz" className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition">
-              Become an Ustaz
-            </Link>
-          </div>
-        </nav>
-      </header>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Header />
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 py-8 flex-1 w-full">
         {/* Back link */}
         <Link href="/find-ustaz" className="text-emerald-600 hover:text-emerald-700 mb-6 inline-block">
-          ← Back to all ustazs
+          ← Back to all tutors
         </Link>
 
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          {/* Profile Header */}
+          {/* Profile Header Banner */}
           <div className="bg-emerald-600 px-6 py-8">
             <div className="flex items-center gap-6">
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center">
-                <span className="text-emerald-600 font-bold text-4xl">
-                  {ustaz.name.charAt(0).toUpperCase()}
-                </span>
+              {/* Avatar — show uploaded photo or fall back to initial */}
+              <div className="w-24 h-24 rounded-full bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
+                {ustaz.profile_photo_url ? (
+                  <Image
+                    src={ustaz.profile_photo_url}
+                    alt={`${ustaz.name} profile photo`}
+                    width={96}
+                    height={96}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-emerald-600 font-bold text-4xl">
+                    {ustaz.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
               </div>
               <div className="text-white">
                 <h1 className="text-3xl font-bold">{ustaz.name}</h1>
@@ -185,7 +238,7 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
               <div className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-gray-500 text-sm">Experience</p>
                 <p className="text-xl font-semibold text-gray-900">
-                  {ustaz.experience_years === 21
+                  {ustaz.experience_years >= 20
                     ? '20+ years'
                     : `${ustaz.experience_years} ${ustaz.experience_years === 1 ? 'year' : 'years'}`}
                 </p>
@@ -232,6 +285,23 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
               </div>
             )}
 
+            {/* Available Times */}
+            {ustaz.available_times && ustaz.available_times.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Available Times</h2>
+                <div className="flex flex-wrap gap-2">
+                  {ustaz.available_times.map((slot) => (
+                    <span
+                      key={slot}
+                      className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full"
+                    >
+                      {slot}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Bio */}
             {ustaz.bio && (
               <div className="mb-8">
@@ -246,7 +316,7 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
                 onClick={() => setShowInquiryForm(true)}
                 className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition"
               >
-                Contact This Ustaz
+                Contact This Tutor
               </button>
             )}
 
@@ -325,7 +395,7 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
                     onChange={(e) => setInquiryData({ ...inquiryData, message: e.target.value })}
                     rows={3}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="Tell the ustaz about your child and what you're looking for..."
+                    placeholder="Tell the tutor about your child and what you're looking for..."
                   />
                 </div>
 
@@ -350,6 +420,8 @@ export default function UstazProfile({ params }: { params: Promise<{ id: string 
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   )
 }
