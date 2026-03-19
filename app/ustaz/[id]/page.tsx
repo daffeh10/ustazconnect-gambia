@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import UstazProfileClient from './UstazProfileClient'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 
 interface TutorMetadataRow {
   id: string
@@ -17,7 +17,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
-  const supabase = createAdminClient()
+  const supabase = await createClient()
 
   const { data: tutor } = await supabase
     .from('tutor_profiles')
