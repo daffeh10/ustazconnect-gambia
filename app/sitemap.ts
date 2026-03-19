@@ -7,12 +7,6 @@ function getBaseUrl() {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getBaseUrl()
-  const supabase = createAdminClient()
-
-  const { data: tutors } = await supabase
-    .from('tutor_profiles')
-    .select('id')
-    .eq('is_approved', true)
 
   const staticRoutes: MetadataRoute.Sitemap = [
     {
@@ -37,11 +31,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ]
 
-  const tutorRoutes: MetadataRoute.Sitemap = (tutors ?? []).map((tutor) => ({
-    url: `${baseUrl}/ustaz/${tutor.id}`,
-    changeFrequency: 'weekly',
-    priority: 0.8,
-  }))
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  return [...staticRoutes, ...tutorRoutes]
+  // Keep deploys from failing if admin-only env vars are missing in a new environment.
+  if (!supabaseUrl || !serviceRoleKey) {
+    return staticRoutes
+  }
+
+  try {
+    const supabase = createAdminClient()
+    const { data: tutors } = await supabase
+      .from('tutor_profiles')
+      .select('id')
+      .eq('is_approved', true)
+
+    const tutorRoutes: MetadataRoute.Sitemap = (tutors ?? []).map((tutor) => ({
+      url: `${baseUrl}/ustaz/${tutor.id}`,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    }))
+
+    return [...staticRoutes, ...tutorRoutes]
+  } catch {
+    return staticRoutes
+  }
 }
