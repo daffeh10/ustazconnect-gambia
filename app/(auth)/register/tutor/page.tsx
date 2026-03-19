@@ -6,12 +6,18 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterTutorPage() {
   const supabase = createClient()
+  const specialCharacterPattern = /[^A-Za-z0-9]/
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [submittedEmail, setSubmittedEmail] = useState('')
+  const [isResending, setIsResending] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
   const [error, setError] = useState('')
 
   function getFriendlyAuthError(message: string) {
@@ -46,7 +52,7 @@ export default function RegisterTutorPage() {
     const trimmedName = name.trim()
     const trimmedEmail = email.trim()
 
-    if (!trimmedName || !trimmedEmail || !password) {
+    if (!trimmedName || !trimmedEmail || !password || !confirmPassword) {
       setError('Please complete all fields before continuing.')
       return
     }
@@ -56,7 +62,23 @@ export default function RegisterTutorPage() {
       return
     }
 
+    if (!specialCharacterPattern.test(password)) {
+      setError('Password must include at least one special character.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    if (!hasAcceptedLegal) {
+      setError('You must agree to the Terms of Service and Privacy Policy to continue.')
+      return
+    }
+
     setError('')
+    setResendMessage('')
     setIsLoading(true)
 
     try {
@@ -64,6 +86,7 @@ export default function RegisterTutorPage() {
         email: trimmedEmail,
         password,
         options: {
+          emailRedirectTo: `${window.location.origin}/login`,
           data: {
             role: 'tutor',
             full_name: trimmedName,
@@ -73,6 +96,14 @@ export default function RegisterTutorPage() {
 
       if (signUpError) {
         setError(getFriendlyAuthError(signUpError.message))
+        return
+      }
+
+      const existingUserWithoutNewIdentity =
+        Array.isArray(data.user?.identities) && data.user.identities.length === 0
+
+      if (existingUserWithoutNewIdentity) {
+        setError('This email is already registered. Please sign in or reset your password.')
         return
       }
 
@@ -95,12 +126,39 @@ export default function RegisterTutorPage() {
         }
       }
 
+      setSubmittedEmail(trimmedEmail)
       setIsSuccess(true)
     } catch (err) {
       console.error(err)
       setError('We could not create your account. Please check your details and try again.')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleResend() {
+    if (!submittedEmail) return
+
+    setError('')
+    setResendMessage('')
+    setIsResending(true)
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: submittedEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`,
+        },
+      })
+
+      if (resendError) throw resendError
+      setResendMessage('Confirmation email re-sent. Please check inbox and spam.')
+    } catch (err) {
+      console.error(err)
+      setError('Could not resend confirmation email right now. Please try again.')
+    } finally {
+      setIsResending(false)
     }
   }
 
@@ -161,7 +219,26 @@ export default function RegisterTutorPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Minimum 8 characters"
+                  placeholder="Minimum 8 characters and 1 special character"
+                  minLength={8}
+                  required
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  Use at least 8 characters and include 1 special character.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  placeholder="Re-enter your password"
                   minLength={8}
                   required
                 />
@@ -173,9 +250,29 @@ export default function RegisterTutorPage() {
                 </div>
               )}
 
+              <label className="flex items-start gap-3 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={hasAcceptedLegal}
+                  onChange={(event) => setHasAcceptedLegal(event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  required
+                />
+                <span>
+                  I agree to the{' '}
+                  <Link href="/terms" className="text-emerald-700 hover:underline font-medium">
+                    Terms of Service
+                  </Link>{' '}
+                  and{' '}
+                  <Link href="/privacy" className="text-emerald-700 hover:underline font-medium">
+                    Privacy Policy
+                  </Link>
+                </span>
+              </label>
+
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !hasAcceptedLegal}
                 className="bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors w-full disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Creating account...' : 'Create Tutor Account'}
@@ -188,6 +285,16 @@ export default function RegisterTutorPage() {
             <p className="text-base text-gray-600">
               We sent a confirmation link to your inbox. Please verify your email to continue.
             </p>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={isResending}
+              className="mt-4 bg-white text-gray-700 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isResending ? 'Resending...' : 'Resend confirmation email'}
+            </button>
+            {resendMessage && <p className="text-sm text-emerald-700 mt-3">{resendMessage}</p>}
+            {error && <p className="text-sm text-red-700 mt-3">{error}</p>}
           </div>
         )}
 

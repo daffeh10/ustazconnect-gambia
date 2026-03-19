@@ -20,6 +20,19 @@ export default function UpdatePasswordPage() {
 
     async function prepareRecoverySession() {
       try {
+        const searchParams = new URLSearchParams(window.location.search)
+        const errorCode = searchParams.get('error_code')
+
+        const code = searchParams.get('code')
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          if (exchangeError) throw exchangeError
+          if (!isMounted) return
+          setHasRecoverySession(true)
+          setIsReady(true)
+          return
+        }
+
         const hashParams = new URLSearchParams(window.location.hash.replace('#', ''))
         const accessToken = hashParams.get('access_token')
         const refreshToken = hashParams.get('refresh_token')
@@ -37,7 +50,6 @@ export default function UpdatePasswordPage() {
           return
         }
 
-        const searchParams = new URLSearchParams(window.location.search)
         const tokenHash = searchParams.get('token_hash')
         const type = searchParams.get('type')
 
@@ -61,7 +73,11 @@ export default function UpdatePasswordPage() {
         const hasSession = Boolean(data.session)
         setHasRecoverySession(hasSession)
         if (!hasSession) {
-          setError('This reset link is invalid or expired. Please request a new one.')
+          if (errorCode === 'otp_expired') {
+            setError('This reset link has already been used or expired. Please request a new one.')
+          } else {
+            setError('This reset link is invalid or expired. Please request a new one.')
+          }
         }
       } catch (err) {
         console.error(err)
@@ -180,6 +196,14 @@ export default function UpdatePasswordPage() {
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
                   {error}
+                </div>
+              )}
+
+              {!hasRecoverySession && (
+                <div className="text-center">
+                  <Link href="/forgot-password" className="text-sm text-emerald-700 hover:underline font-medium">
+                    Request a new reset link
+                  </Link>
                 </div>
               )}
 

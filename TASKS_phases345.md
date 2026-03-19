@@ -1,11 +1,11 @@
 # TutorConnect Gambia — TASKS_phases345.md
-# Claude Code instruction file for Phases 3, 4 & 5
+# Claude Code/Codex instruction file for Phases 3, 4 & 5
 #
 # ═══════════════════════════════════════════════════════════════
 # HOW TO USE THIS FILE — READ FIRST
 # ═══════════════════════════════════════════════════════════════
 #
-# EVERY SESSION — start Claude Code with this exact message:
+# EVERY SESSION — start Claude Code/Codex with this exact message:
 #
 #   "Read CLAUDE.md and TASKS_phases345.md.
 #    Find all tasks marked [DONE] in the headings.
@@ -15,8 +15,8 @@
 # GOLDEN RULES:
 #   ✗ One task at a time — never do two at once
 #   ✗ Never skip the TEST STEPS — always check it yourself
-#   ✗ Never let Claude Code run SQL — you paste it in Supabase
-#   ✗ Never let Claude Code run git — you do that yourself
+#   ✗ Never let Claude Code/Codex run SQL — you paste it in Supabase
+#   ✗ Never let Claude Code/Codex run git — you do that yourself
 #   ✗ Never approve deleting a file without asking why first
 #   ✓ Task → test → confirm → next task
 #
@@ -502,7 +502,7 @@ CREATE POLICY "Tutors update booking status" ON bookings FOR UPDATE
 
 // Live cost breakdown (recalculates on hours or subject change):
 //   monthly_total = hours * tutor.hourly_rate
-//   service_fee   = Math.round(monthly_total * 0.05)
+//   service_fee   = Math.round(monthly_total * 0.03)
 //   grand_total   = monthly_total + service_fee
 //   Display in: bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm
 

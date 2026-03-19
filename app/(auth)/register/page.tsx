@@ -1,8 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 
 export default function RegisterChooserPage() {
+  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-xl mx-auto mb-4">
@@ -20,7 +23,10 @@ export default function RegisterChooserPage() {
         <div className="space-y-4">
           <Link
             href="/register/tutor"
-            className="block bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow"
+            aria-disabled={!hasAcceptedLegal}
+            className={`block bg-white rounded-xl shadow-sm border border-gray-100 p-6 transition-shadow ${
+              hasAcceptedLegal ? 'hover:shadow-md' : 'opacity-60 pointer-events-none'
+            }`}
           >
             <h2 className="text-lg font-semibold text-gray-900 mb-1">Register as Tutor</h2>
             <p className="text-base text-gray-600">
@@ -30,7 +36,10 @@ export default function RegisterChooserPage() {
 
           <Link
             href="/register/family"
-            className="block bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow"
+            aria-disabled={!hasAcceptedLegal}
+            className={`block bg-white rounded-xl shadow-sm border border-gray-100 p-6 transition-shadow ${
+              hasAcceptedLegal ? 'hover:shadow-md' : 'opacity-60 pointer-events-none'
+            }`}
           >
             <h2 className="text-lg font-semibold text-gray-900 mb-1">Register as Family/Student</h2>
             <p className="text-base text-gray-600">
@@ -38,6 +47,25 @@ export default function RegisterChooserPage() {
             </p>
           </Link>
         </div>
+
+        <label className="flex items-start gap-3 text-sm text-gray-600 mt-6">
+          <input
+            type="checkbox"
+            checked={hasAcceptedLegal}
+            onChange={(event) => setHasAcceptedLegal(event.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+          />
+          <span>
+            I agree to the{' '}
+            <Link href="/terms" className="text-emerald-700 hover:underline font-medium">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="text-emerald-700 hover:underline font-medium">
+              Privacy Policy
+            </Link>
+          </span>
+        </label>
 
         <p className="text-sm text-gray-500 mt-8 text-center">
           Already have an account?{' '}

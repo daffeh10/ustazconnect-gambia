@@ -10,7 +10,7 @@ export default function LocationSearch() {
 
   function handleSearch() {
     if (selectedLocation) {
-      router.push(`/find-ustaz?location=${selectedLocation}`)
+      router.push(`/find-ustaz?location=${encodeURIComponent(selectedLocation)}`)
     } else {
       router.push('/find-ustaz')
     }
@@ -38,6 +38,7 @@ export default function LocationSearch() {
         ))}
       </select>
       <button
+        type="button"
         onClick={handleSearch}
         className="block w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition text-center"
       >

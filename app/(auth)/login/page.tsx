@@ -27,14 +27,46 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
         password,
       })
 
       if (signInError) throw signInError
 
-      router.push('/dashboard')
+      const user = signInData.user
+      const metadataRole =
+        typeof user.user_metadata?.role === 'string'
+          ? user.user_metadata.role.toLowerCase().trim()
+          : ''
+
+      let destination = '/dashboard'
+      const { data: adminProfile, error: adminError } = await supabase
+        .from('admin_users')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!adminError && adminProfile) {
+        destination = '/admin'
+      } else if (metadataRole === 'family') {
+        destination = '/family/dashboard'
+      } else if (metadataRole === 'tutor') {
+        destination = '/dashboard'
+      } else {
+        // Fallback for older accounts where metadata role may be missing.
+        const { data: familyProfile, error: familyError } = await supabase
+          .from('family_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (!familyError && familyProfile) {
+          destination = '/family/dashboard'
+        }
+      }
+
+      router.push(destination)
       router.refresh()
     } catch (err) {
       console.error(err)

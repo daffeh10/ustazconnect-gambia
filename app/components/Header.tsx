@@ -7,36 +7,111 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function Header() {
   const router = useRouter()
+  const [supabase] = useState(() => createClient())
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [dashboardHref, setDashboardHref] = useState('/dashboard')
 
   useEffect(() => {
-    const supabase = createClient()
+    let isMounted = true
+
+    async function syncUserState(userId: string | null) {
+      if (!isMounted) return
+
+      if (!userId) {
+        setIsLoggedIn(false)
+        setDashboardHref('/dashboard')
+        return
+      }
+
+      setIsLoggedIn(true)
+
+      try {
+        const { data: adminProfile, error: adminError } = await supabase
+          .from('admin_users')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (adminError) throw adminError
+
+        if (!isMounted) return
+
+        if (adminProfile) {
+          setDashboardHref('/admin')
+          return
+        }
+
+        const { data: familyProfile, error: familyError } = await supabase
+          .from('family_profiles')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (familyError && familyError.code !== 'PGRST116' && familyError.code !== '42P01') {
+          throw familyError
+        }
+
+        if (!isMounted) return
+        setDashboardHref(familyProfile ? '/family/dashboard' : '/dashboard')
+      } catch (error) {
+        console.error('Failed to resolve header auth state', error)
+        if (isMounted) {
+          setDashboardHref('/dashboard')
+        }
+      }
+    }
 
     // Check initial auth state on mount
     async function checkUser() {
-      const { data: { user } } = await supabase.auth.getUser()
-      setIsLoggedIn(!!user)
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
+
+        if (error) throw error
+        await syncUserState(session?.user?.id ?? null)
+      } catch (authError) {
+        console.error('Failed to load current user in header', authError)
+        if (isMounted) {
+          setIsLoggedIn(false)
+          setDashboardHref('/dashboard')
+        }
+      }
     }
-    checkUser()
+    void checkUser()
 
     // Stay in sync when user logs in or out (including other tabs)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoggedIn(!!session?.user)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      void syncUserState(session?.user?.id ?? null)
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase])
 
   async function handleSignOut() {
+    setIsMenuOpen(false)
     setIsSigningOut(true)
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    setIsLoggedIn(false)
-    setIsSigningOut(false)
-    router.push('/')
-    router.refresh()
+
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
+      if (error) throw error
+    } catch (error) {
+      console.error('Header sign-out failed', error)
+    } finally {
+      setIsLoggedIn(false)
+      setDashboardHref('/dashboard')
+      setIsSigningOut(false)
+      router.replace('/')
+      router.refresh()
+    }
   }
 
   return (
@@ -56,7 +131,7 @@ export default function Header() {
 
             {isLoggedIn ? (
               <>
-                <Link href="/dashboard" className="text-gray-600 hover:text-emerald-700 transition">
+                <Link href={dashboardHref} className="text-gray-600 hover:text-emerald-700 transition">
                   Dashboard
                 </Link>
                 <button
@@ -114,14 +189,16 @@ export default function Header() {
             {isLoggedIn ? (
               <>
                 <Link
-                  href="/dashboard"
+                  href={dashboardHref}
                   className="block text-gray-600 hover:text-emerald-700 transition py-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Dashboard
                 </Link>
                 <button
-                  onClick={() => { setIsMenuOpen(false); handleSignOut() }}
+                  onClick={() => {
+                    void handleSignOut()
+                  }}
                   disabled={isSigningOut}
                   className="block w-full text-left text-gray-600 hover:text-emerald-700 transition py-2 disabled:opacity-60"
                 >

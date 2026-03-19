@@ -6,9 +6,13 @@ export async function proxy(request: NextRequest) {
     request,
   })
 
+  const pathname = request.nextUrl.pathname
   const protectedPaths = ['/dashboard', '/family', '/book', '/messages']
+  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/')
+  const isAdminLoginRoute = pathname === '/admin/login'
+  const isProtectedAdminRoute = isAdminRoute && !isAdminLoginRoute
   const requiresAuth = protectedPaths.some(
-    (path) => request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(`${path}/`)
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
   )
 
   const supabase = createServerClient(
@@ -37,6 +41,49 @@ export async function proxy(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    if (isProtectedAdminRoute) {
+      if (!user) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/admin/login'
+        url.searchParams.set('next', pathname)
+        return NextResponse.redirect(url)
+      }
+
+      const { data: adminRow, error: adminError } = await supabase
+        .from('admin_users')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (adminError) throw adminError
+      if (!adminRow) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/admin/login'
+        url.searchParams.set('next', pathname)
+        return NextResponse.redirect(url)
+      }
+    }
+
+    if (isAdminLoginRoute && user) {
+      const { data: adminRow, error: adminError } = await supabase
+        .from('admin_users')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (adminError) throw adminError
+      if (adminRow) {
+        const url = request.nextUrl.clone()
+        const nextPath = request.nextUrl.searchParams.get('next')
+        url.pathname =
+          nextPath && nextPath.startsWith('/admin') && nextPath !== '/admin/login'
+            ? nextPath
+            : '/admin'
+        url.search = ''
+        return NextResponse.redirect(url)
+      }
+    }
+
     if (!user && requiresAuth) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
@@ -48,6 +95,13 @@ export async function proxy(request: NextRequest) {
     console.error('Proxy auth check failed:', error)
 
     // Fail closed for protected routes.
+    if (isProtectedAdminRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/admin/login'
+      url.searchParams.set('next', pathname)
+      return NextResponse.redirect(url)
+    }
+
     if (requiresAuth) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
