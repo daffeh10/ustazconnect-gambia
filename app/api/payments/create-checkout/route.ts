@@ -16,6 +16,19 @@ interface BookingRow {
   status: string | null
 }
 
+interface ModemPayIntentResponse {
+  status?: boolean
+  message?: string
+  payment_intent_id?: string
+  intent_secret?: string
+  payment_link?: string
+  data?: {
+    id?: string
+    intent_secret?: string
+    payment_link?: string
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -48,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
     }
 
-    const paymentIntent = await modemPay.paymentIntents.create({
+    const paymentIntent = (await modemPay.paymentIntents.create({
       amount: booking.grand_total,
       currency: 'GMD',
       title: 'TutorConnect Gambia booking payment',
@@ -63,9 +76,14 @@ export async function POST(request: Request) {
       return_url: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
       cancel_url: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,
       callback_url: `${siteUrl}/api/payments/webhook`,
-    })
+    })) as ModemPayIntentResponse
 
-    if (!paymentIntent.status || !paymentIntent.data?.payment_link || !paymentIntent.data?.id) {
+    const providerPaymentId = paymentIntent.payment_intent_id || paymentIntent.data?.id || ''
+    const intentSecret = paymentIntent.intent_secret || paymentIntent.data?.intent_secret || ''
+    const paymentLink = paymentIntent.payment_link || paymentIntent.data?.payment_link || ''
+
+    if (!providerPaymentId || !intentSecret || !paymentLink) {
+      console.error('Unexpected ModemPay payment intent response', paymentIntent)
       throw new Error(paymentIntent.message || 'Could not create ModemPay checkout session.')
     }
 
@@ -77,14 +95,14 @@ export async function POST(request: Request) {
       total: booking.grand_total,
       payment_method: 'modempay',
       status: 'pending',
-      intent_secret: paymentIntent.data.intent_secret,
-      provider_payment_id: paymentIntent.data.id,
+      intent_secret: intentSecret,
+      provider_payment_id: providerPaymentId,
     })
 
     if (paymentInsertError) throw paymentInsertError
 
     return NextResponse.json({
-      payment_link: paymentIntent.data.payment_link,
+      payment_link: paymentLink,
     })
   } catch (error) {
     console.error('create-checkout route failed', error)
