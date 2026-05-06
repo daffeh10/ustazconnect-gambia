@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { LOCATION_REGIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
 import Link from 'next/link'
@@ -10,6 +9,7 @@ import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
 import VerificationBadge from '@/app/components/VerificationBadge'
 import StarRating from '@/app/components/StarRating'
+import Avatar from '@/app/components/Avatar'
 
 interface UstazProfile {
   id: string
@@ -235,21 +235,7 @@ function FindUstazInner() {
                   className="w-48 shrink-0 bg-white border border-gray-200 rounded-xl p-3"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full overflow-hidden bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                      {tutor.profile_photo_url ? (
-                        <Image
-                          src={tutor.profile_photo_url}
-                          alt={`${tutor.name} photo`}
-                          width={48}
-                          height={48}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-emerald-700 font-bold text-lg">
-                          {tutor.name.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </div>
+                    <Avatar name={tutor.name} photoUrl={tutor.profile_photo_url} size="sm" />
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-900 truncate">{tutor.name}</p>
                       <p className="text-sm text-gray-500 truncate">{tutor.location}</p>
@@ -426,21 +412,7 @@ function FindUstazInner() {
               >
                 {/* Avatar — show photo or initial */}
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-14 h-14 rounded-full overflow-hidden bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                    {ustaz.profile_photo_url ? (
-                      <Image
-                        src={ustaz.profile_photo_url}
-                        alt={`${ustaz.name} photo`}
-                        width={56}
-                        height={56}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-emerald-700 font-bold text-xl">
-                        {ustaz.name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
+                  <Avatar name={ustaz.name} photoUrl={ustaz.profile_photo_url} size="md" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{ustaz.name}</h3>
                     <p className="text-sm text-gray-500">{ustaz.location}</p>

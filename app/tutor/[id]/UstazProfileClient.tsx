@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
 import VerificationBadge from '@/app/components/VerificationBadge'
@@ -10,7 +10,9 @@ import StarRating from '@/app/components/StarRating'
 import ReviewCard from '@/app/components/ReviewCard'
 import LeaveReviewForm from '@/app/components/LeaveReviewForm'
 import ReportModal from '@/app/components/ReportModal'
+import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
+import Avatar from '@/app/components/Avatar'
 
 interface UstazProfile {
   id: string
@@ -24,6 +26,11 @@ interface UstazProfile {
   available_days: string[] | null
   available_times?: string[] | null
   profile_photo_url: string | null
+  offers_online?: boolean | null
+  languages?: string[] | null
+  areas_covered?: string[] | null
+  age_groups?: string[] | null
+  education?: string | null
   verification_status?: string | null
   average_rating?: number | string | null
   created_at: string
@@ -40,10 +47,14 @@ interface ReviewRow {
 }
 
 const RECENT_VIEWED_KEY = 'rv_tutors'
-const PUBLIC_TUTOR_PROFILE_SELECT =
+const LEGACY_PUBLIC_TUTOR_PROFILE_SELECT =
   'id,user_id,name,location,subjects,experience_years,hourly_rate,bio,available_days,available_times,profile_photo_url,verification_status,average_rating,created_at'
+const ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT =
+  `${LEGACY_PUBLIC_TUTOR_PROFILE_SELECT},offers_online,languages,areas_covered,age_groups,education`
 
 export default function UstazProfileClient({ id }: { id: string }) {
+  const router = useRouter()
+  const { user, openAuthModal } = useAuth()
   const [supabase] = useState(() => createClient())
   const [ustaz, setUstaz] = useState<UstazProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -51,7 +62,6 @@ export default function UstazProfileClient({ id }: { id: string }) {
   const [reviews, setReviews] = useState<ReviewRow[]>([])
   const [isReviewsLoading, setIsReviewsLoading] = useState(true)
   const [reviewsError, setReviewsError] = useState('')
-  const [canBookTutor, setCanBookTutor] = useState(false)
 
   const loadReviews = useCallback(async () => {
     setIsReviewsLoading(true)
@@ -78,12 +88,26 @@ export default function UstazProfileClient({ id }: { id: string }) {
   useEffect(() => {
     async function fetchUstaz() {
       try {
-        const { data, error } = await supabase
+        const primaryResult = await supabase
           .from('tutor_profiles')
-          .select(PUBLIC_TUTOR_PROFILE_SELECT)
+          .select(ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT)
           .eq('id', id)
           .eq('is_approved', true)
           .single()
+        let data = (primaryResult.data ?? null) as UstazProfile | null
+        let error = primaryResult.error
+
+        if (error) {
+          const fallbackResult = await supabase
+            .from('tutor_profiles')
+            .select(LEGACY_PUBLIC_TUTOR_PROFILE_SELECT)
+            .eq('id', id)
+            .eq('is_approved', true)
+            .single()
+
+          data = (fallbackResult.data ?? null) as UstazProfile | null
+          error = fallbackResult.error
+        }
 
         if (error) throw error
         setUstaz(data)
@@ -108,56 +132,16 @@ export default function UstazProfileClient({ id }: { id: string }) {
     window.localStorage.setItem(RECENT_VIEWED_KEY, JSON.stringify(nextIds))
   }, [id])
 
-  useEffect(() => {
-    let isMounted = true
+  function handleBookLesson() {
+    const bookingPath = `/book/${id}`
 
-    async function checkViewerRole() {
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError) throw userError
-        if (!isMounted || !user) {
-          setCanBookTutor(false)
-          return
-        }
-
-        const metadataRole =
-          typeof user.user_metadata?.role === 'string'
-            ? user.user_metadata.role.toLowerCase().trim()
-            : ''
-
-        if (metadataRole === 'family') {
-          setCanBookTutor(true)
-          return
-        }
-
-        const { data: familyProfile, error: familyError } = await supabase
-          .from('family_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        if (familyError) throw familyError
-        if (isMounted) {
-          setCanBookTutor(Boolean(familyProfile))
-        }
-      } catch (err) {
-        console.error(err)
-        if (isMounted) {
-          setCanBookTutor(false)
-        }
-      }
+    if (!user) {
+      openAuthModal(bookingPath)
+      return
     }
 
-    void checkViewerRole()
-
-    return () => {
-      isMounted = false
-    }
-  }, [supabase])
+    router.push(bookingPath)
+  }
 
   // Loading state
   if (isLoading) {
@@ -221,26 +205,24 @@ export default function UstazProfileClient({ id }: { id: string }) {
           <div className="bg-emerald-600 px-6 py-8">
             <div className="flex items-center gap-6">
               {/* Avatar — show uploaded photo or fall back to initial */}
-              <div className="w-24 h-24 rounded-full bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
-                {ustaz.profile_photo_url ? (
-                  <Image
-                    src={ustaz.profile_photo_url}
-                    alt={`${ustaz.name} profile photo`}
-                    width={96}
-                    height={96}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-emerald-600 font-bold text-4xl">
-                    {ustaz.name.charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
+              <Avatar
+                name={ustaz.name}
+                photoUrl={ustaz.profile_photo_url}
+                size="lg"
+                className="bg-white text-emerald-600"
+              />
               <div className="text-white">
                 <h1 className="text-3xl font-bold">{ustaz.name}</h1>
                 <div className="mt-2">
                   <VerificationBadge status={ustaz.verification_status} />
                 </div>
+                {ustaz.offers_online && (
+                  <div className="mt-2">
+                    <span className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white">
+                      Also available online
+                    </span>
+                  </div>
+                )}
                 <p className="text-emerald-100 flex items-center gap-2 mt-1">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -287,6 +269,62 @@ export default function UstazProfileClient({ id }: { id: string }) {
                   </span>
                 ))}
               </div>
+            </div>
+
+            <div className="mb-8 grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Languages</h2>
+                {ustaz.languages && ustaz.languages.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {ustaz.languages.map((language) => (
+                      <span key={language} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full">
+                        {language}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">This tutor has not added languages yet.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Education</h2>
+                {ustaz.education ? (
+                  <p className="text-gray-700">{ustaz.education}</p>
+                ) : (
+                  <p className="text-gray-500">This tutor has not added education details yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Areas Covered</h2>
+              {ustaz.areas_covered && ustaz.areas_covered.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {ustaz.areas_covered.map((area) => (
+                    <span key={area} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full">
+                      {area}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">This tutor has not added travel areas yet.</p>
+              )}
+            </div>
+
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Age Groups</h2>
+              {ustaz.age_groups && ustaz.age_groups.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {ustaz.age_groups.map((ageGroup) => (
+                    <span key={ageGroup} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full">
+                      {ageGroup}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">This tutor has not added age groups yet.</p>
+              )}
             </div>
 
             {/* Available Days */}
@@ -381,14 +419,13 @@ export default function UstazProfileClient({ id }: { id: string }) {
             </section>
 
             <div className="space-y-3">
-              {canBookTutor && (
-                <Link
-                  href={`/book/${ustaz.id}`}
-                  className="block w-full text-center bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition"
-                >
-                  Book This Tutor
-                </Link>
-              )}
+              <button
+                type="button"
+                onClick={handleBookLesson}
+                className="block w-full text-center bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition"
+              >
+                Book Lesson
+              </button>
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700">
@@ -400,7 +437,6 @@ export default function UstazProfileClient({ id }: { id: string }) {
             )}
           </div>
         </div>
-
       </main>
 
       <Footer />

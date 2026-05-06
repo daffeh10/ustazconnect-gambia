@@ -103,19 +103,19 @@ export default function PaymentPage() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch('/api/wave/create-payment', {
+      const response = await fetch('/api/payments/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bookingId }),
       })
 
-      const payload = (await response.json()) as { url?: string; error?: string }
+      const payload = (await response.json()) as { payment_link?: string; error?: string }
 
-      if (!response.ok || !payload.url) {
+      if (!response.ok || !payload.payment_link) {
         throw new Error(payload.error || 'Could not start payment.')
       }
 
-      window.location.href = payload.url
+      window.location.href = payload.payment_link
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Could not start payment.')
@@ -162,7 +162,7 @@ export default function PaymentPage() {
         <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-md mx-auto mt-6">
           <h1 className="text-2xl font-bold text-gray-900">Complete Payment</h1>
           <p className="text-sm text-gray-600 mt-2">
-            Confirm this month&apos;s tutoring payment securely through Wave.
+            Pay securely with ModemPay. Families can use Mobile Money or cards to complete this booking.
           </p>
 
           <div className="mt-6 space-y-3 text-sm text-gray-700">
@@ -210,11 +210,11 @@ export default function PaymentPage() {
             disabled={isSubmitting || booking.status !== 'confirmed'}
             className="mt-6 w-full bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? 'Starting payment...' : 'Pay with Wave'}
+            {isSubmitting ? 'Starting payment...' : `Pay ${formatMoney(booking.grand_total)} with ModemPay`}
           </button>
 
           <p className="mt-4 text-xs text-gray-500 text-center">
-            Your payment is processed securely. If something goes wrong, we can review and refund eligible issues.
+            Powered by ModemPay. Test checkout can accept providers like AfriMoney, QMoney, Wave, and cards depending on account setup.
           </p>
         </div>
       </div>

@@ -2,17 +2,40 @@
 
 import Link from 'next/link'
 import { FormEvent, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { ALL_LOCATIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
+import { buildPublicUrl, getFriendlyRegistrationError, passwordMeetsRequirements } from '@/lib/auth'
+import {
+  AGE_GROUP_OPTIONS,
+  EDUCATION_OPTIONS,
+  extractGambiaPhoneDigits,
+  formatGambiaPhoneFromDigits,
+  isMissingEnhancedTutorProfileColumnError,
+  isValidGambiaPhoneDigits,
+  LANGUAGE_OPTIONS,
+  sanitizeGambiaPhoneDigits,
+  TRAVEL_RADIUS_OPTIONS,
+} from '@/lib/tutor-profile'
 
 export default function RegisterTutorPage() {
   const supabase = createClient()
-  const specialCharacterPattern = /[^A-Za-z0-9]/
+  const router = useRouter()
 
   const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([])
+  const [travelRadiusKm, setTravelRadiusKm] = useState('5')
+  const [areasCovered, setAreasCovered] = useState<string[]>([])
+  const [languages, setLanguages] = useState<string[]>(['English'])
+  const [ageGroups, setAgeGroups] = useState<string[]>([])
+  const [education, setEducation] = useState('')
+  const [experienceYears, setExperienceYears] = useState('')
+  const [offersOnline, setOffersOnline] = useState(false)
+  const [hasTutorConsent, setHasTutorConsent] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [submittedEmail, setSubmittedEmail] = useState('')
@@ -20,50 +43,29 @@ export default function RegisterTutorPage() {
   const [resendMessage, setResendMessage] = useState('')
   const [error, setError] = useState('')
 
-  function getFriendlyAuthError(message: string) {
-    const lower = message.toLowerCase()
-
-    if (lower.includes('already registered') || lower.includes('already been registered')) {
-      return 'This email is already registered. Please sign in instead.'
-    }
-
-    if (
-      lower.includes('invalid email') ||
-      lower.includes('unable to validate email address') ||
-      lower.includes('email address is invalid')
-    ) {
-      return 'Please enter a valid email address.'
-    }
-
-    if (lower.includes('error sending confirmation email') || lower.includes('email rate limit exceeded')) {
-      return 'We could not send a confirmation email right now. Please try again in a few minutes.'
-    }
-
-    if (lower.includes('password')) {
-      return 'Password must be at least 8 characters long.'
-    }
-
-    return 'We could not create your account. Please check your details and try again.'
-  }
-
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     const trimmedName = name.trim()
     const trimmedEmail = email.trim()
+    const sanitizedPhone = sanitizeGambiaPhoneDigits(phone)
+    const formattedPhone = formatGambiaPhoneFromDigits(sanitizedPhone)
+    const parsedExperienceYears = experienceYears.trim() === '' ? 0 : Number(experienceYears)
+    const parsedTravelRadiusKm = Number(travelRadiusKm) || 5
+    const consentGivenAt = new Date().toISOString()
 
     if (!trimmedName || !trimmedEmail || !password || !confirmPassword) {
       setError('Please complete all fields before continuing.')
       return
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+    if (!isValidGambiaPhoneDigits(sanitizedPhone)) {
+      setError('Please enter a valid 7-digit Gambian phone number after +220.')
       return
     }
 
-    if (!specialCharacterPattern.test(password)) {
-      setError('Password must include at least one special character.')
+    if (!passwordMeetsRequirements(password)) {
+      setError('Password must be at least 8 characters long and include 1 special character.')
       return
     }
 
@@ -72,8 +74,18 @@ export default function RegisterTutorPage() {
       return
     }
 
-    if (!hasAcceptedLegal) {
-      setError('You must agree to the Terms of Service and Privacy Policy to continue.')
+    if (selectedSubjects.length === 0) {
+      setError('Please select at least one subject you can teach.')
+      return
+    }
+
+    if (Number.isNaN(parsedExperienceYears) || parsedExperienceYears < 0) {
+      setError('Experience years must be a valid non-negative number.')
+      return
+    }
+
+    if (!hasTutorConsent) {
+      setError('Please confirm your tutor profile details and agree to the platform terms.')
       return
     }
 
@@ -86,16 +98,26 @@ export default function RegisterTutorPage() {
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: buildPublicUrl('/login'),
           data: {
             role: 'tutor',
             full_name: trimmedName,
+            phone: formattedPhone,
+            selected_subjects: selectedSubjects,
+            travel_radius_km: parsedTravelRadiusKm,
+            areas_covered: areasCovered,
+            languages,
+            age_groups: ageGroups,
+            education: education || '',
+            experience_years: parsedExperienceYears,
+            offers_online: offersOnline,
+            consent_given_at: consentGivenAt,
           },
         },
       })
 
       if (signUpError) {
-        setError(getFriendlyAuthError(signUpError.message))
+        setError(getFriendlyRegistrationError(signUpError.message))
         return
       }
 
@@ -113,19 +135,48 @@ export default function RegisterTutorPage() {
       }
 
       if (data.session) {
-        const { error: insertError } = await supabase.from('tutor_profiles').insert({
+        // Email confirmation is disabled — user is already confirmed.
+        // Insert their profile row and redirect straight to the dashboard.
+        const basePayload = {
           user_id: userId,
           name: trimmedName,
           email: trimmedEmail,
+          phone: formattedPhone,
+          subjects: selectedSubjects,
+          experience_years: parsedExperienceYears,
           is_active: true,
-          is_approved: true,
-        })
+          is_approved: false,
+        }
+        const enhancedPayload = {
+          ...basePayload,
+          travel_radius_km: parsedTravelRadiusKm,
+          areas_covered: areasCovered,
+          languages,
+          age_groups: ageGroups,
+          education: education || '',
+          offers_online: offersOnline,
+          consent_given_at: consentGivenAt,
+        }
+
+        let { error: insertError } = await supabase.from('tutor_profiles').insert(enhancedPayload)
+
+        if (
+          insertError &&
+          isMissingEnhancedTutorProfileColumnError(insertError.message)
+        ) {
+          const fallbackInsert = await supabase.from('tutor_profiles').insert(basePayload)
+          insertError = fallbackInsert.error
+        }
 
         if (insertError) {
           console.error('Tutor profile insert failed during signup:', insertError.message)
         }
+
+        router.push('/dashboard')
+        return
       }
 
+      // Email confirmation is enabled — ask the user to check their inbox.
       setSubmittedEmail(trimmedEmail)
       setIsSuccess(true)
     } catch (err) {
@@ -148,7 +199,7 @@ export default function RegisterTutorPage() {
         type: 'signup',
         email: submittedEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: buildPublicUrl('/login'),
         },
       })
 
@@ -160,6 +211,38 @@ export default function RegisterTutorPage() {
     } finally {
       setIsResending(false)
     }
+  }
+
+  function toggleSubject(subject: string) {
+    setSelectedSubjects((current) =>
+      current.includes(subject)
+        ? current.filter((item) => item !== subject)
+        : [...current, subject]
+    )
+  }
+
+  function toggleAreasCovered(area: string) {
+    setAreasCovered((current) =>
+      current.includes(area)
+        ? current.filter((item) => item !== area)
+        : [...current, area]
+    )
+  }
+
+  function toggleLanguage(language: string) {
+    setLanguages((current) =>
+      current.includes(language)
+        ? current.filter((item) => item !== language)
+        : [...current, language]
+    )
+  }
+
+  function toggleAgeGroup(ageGroup: string) {
+    setAgeGroups((current) =>
+      current.includes(ageGroup)
+        ? current.filter((item) => item !== ageGroup)
+        : [...current, ageGroup]
+    )
   }
 
   return (
@@ -195,6 +278,31 @@ export default function RegisterTutorPage() {
               </div>
 
               <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <div className="flex">
+                  <span className="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-4 text-gray-600">
+                    +220
+                  </span>
+                  <input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    value={phone}
+                    onChange={(e) => setPhone(extractGambiaPhoneDigits(e.target.value))}
+                    className="w-full rounded-r-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                    placeholder="3825155"
+                    maxLength={7}
+                    required
+                  />
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  This is your main tutor contact number. Families only get it after the first lesson is booked.
+                </p>
+              </div>
+
+              <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email Address
                 </label>
@@ -207,6 +315,9 @@ export default function RegisterTutorPage() {
                   placeholder="you@example.com"
                   required
                 />
+                <p className="mt-1 text-sm text-gray-500">
+                  Secondary contact for now. We still use email to create and secure tutor accounts until phone login is enabled.
+                </p>
               </div>
 
               <div>
@@ -244,6 +355,191 @@ export default function RegisterTutorPage() {
                 />
               </div>
 
+              <div>
+                <label htmlFor="travel-radius" className="block text-sm font-medium text-gray-700 mb-1">
+                  Travel Radius
+                </label>
+                <select
+                  id="travel-radius"
+                  value={travelRadiusKm}
+                  onChange={(e) => setTravelRadiusKm(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  {TRAVEL_RADIUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Areas Covered</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_LOCATIONS.map((area) => {
+                    const isSelected = areasCovered.includes(area)
+                    return (
+                      <button
+                        key={area}
+                        type="button"
+                        onClick={() => toggleAreasCovered(area)}
+                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {area}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  Select every area you are willing to travel to for in-person lessons.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Languages</label>
+                <div className="flex flex-wrap gap-2">
+                  {LANGUAGE_OPTIONS.map((language) => {
+                    const isSelected = languages.includes(language)
+                    return (
+                      <button
+                        key={language}
+                        type="button"
+                        onClick={() => toggleLanguage(language)}
+                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {language}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Age Groups</label>
+                <div className="flex flex-wrap gap-2">
+                  {AGE_GROUP_OPTIONS.map((ageGroup) => {
+                    const isSelected = ageGroups.includes(ageGroup)
+                    return (
+                      <button
+                        key={ageGroup}
+                        type="button"
+                        onClick={() => toggleAgeGroup(ageGroup)}
+                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {ageGroup}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="education" className="block text-sm font-medium text-gray-700 mb-1">
+                    Education
+                  </label>
+                  <select
+                    id="education"
+                    value={education}
+                    onChange={(e) => setEducation(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    <option value="">Select education level</option>
+                    {EDUCATION_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="experience-years" className="block text-sm font-medium text-gray-700 mb-1">
+                    Experience Years
+                  </label>
+                  <input
+                    id="experience-years"
+                    type="number"
+                    min="0"
+                    max="50"
+                    value={experienceYears}
+                    onChange={(e) => setExperienceYears(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    placeholder="e.g. 5"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <label className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">I also offer online lessons</p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      Families will see an online badge on your profile and card.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOffersOnline((current) => !current)}
+                    aria-pressed={offersOnline}
+                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
+                      offersOnline ? 'bg-emerald-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                        offersOnline ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Subjects You Teach</label>
+                <div className="space-y-4">
+                  {SUBJECT_CATEGORIES.map((category) => (
+                    <div key={category.category}>
+                      <p className="text-sm font-medium text-gray-700 mb-2">{category.category}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {category.subjects.map((subject) => {
+                          const isSelected = selectedSubjects.includes(subject)
+                          return (
+                            <button
+                              key={subject}
+                              type="button"
+                              onClick={() => toggleSubject(subject)}
+                              className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                            >
+                              {subject}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  Select all the subjects you are comfortable teaching.
+                </p>
+              </div>
+
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
                   {error}
@@ -253,13 +549,13 @@ export default function RegisterTutorPage() {
               <label className="flex items-start gap-3 text-sm text-gray-600">
                 <input
                   type="checkbox"
-                  checked={hasAcceptedLegal}
-                  onChange={(event) => setHasAcceptedLegal(event.target.checked)}
+                  checked={hasTutorConsent}
+                  onChange={(event) => setHasTutorConsent(event.target.checked)}
                   className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                   required
                 />
                 <span>
-                  I agree to the{' '}
+                  I confirm that my profile details are accurate, I agree to be contacted for tutoring requests, and I accept the{' '}
                   <Link href="/terms" className="text-emerald-700 hover:underline font-medium">
                     Terms of Service
                   </Link>{' '}
@@ -272,7 +568,7 @@ export default function RegisterTutorPage() {
 
               <button
                 type="submit"
-                disabled={isLoading || !hasAcceptedLegal}
+                disabled={isLoading || !hasTutorConsent}
                 className="bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors w-full disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Creating account...' : 'Create Tutor Account'}
@@ -284,6 +580,9 @@ export default function RegisterTutorPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h2>
             <p className="text-base text-gray-600">
               We sent a confirmation link to your inbox. Please verify your email to continue.
+            </p>
+            <p className="text-sm text-gray-500 mt-3">
+              If you do not see it within a few minutes, check spam or use the resend button below.
             </p>
             <button
               type="button"

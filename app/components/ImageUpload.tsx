@@ -1,15 +1,71 @@
 'use client'
 
-import Image from 'next/image'
 import { ChangeEvent, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import Avatar from './Avatar'
 
 interface ImageUploadProps {
+  currentName?: string
   currentPhotoUrl?: string
   onUpload: (url: string) => void
 }
 
-export default function ImageUpload({ currentPhotoUrl, onUpload }: ImageUploadProps) {
+async function compressImage(file: File) {
+  const imageUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new window.Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Could not read the selected image.'))
+      img.src = imageUrl
+    })
+
+    const maxDimension = 400
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height))
+    const targetWidth = Math.max(1, Math.round(image.width * scale))
+    const targetHeight = Math.max(1, Math.round(image.height * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('Could not prepare image compression.')
+    }
+
+    context.drawImage(image, 0, 0, targetWidth, targetHeight)
+
+    let quality = 0.82
+    let blob: Blob | null = null
+
+    while (quality >= 0.4) {
+      blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', quality)
+      })
+
+      if (blob && blob.size <= 500 * 1024) {
+        break
+      }
+
+      quality -= 0.08
+    }
+
+    if (!blob) {
+      throw new Error('Could not compress the selected image.')
+    }
+
+    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'avatar'}.jpg`, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    })
+  } finally {
+    URL.revokeObjectURL(imageUrl)
+  }
+}
+
+export default function ImageUpload({ currentName = 'Tutor', currentPhotoUrl, onUpload }: ImageUploadProps) {
   const supabase = createClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -27,8 +83,8 @@ export default function ImageUpload({ currentPhotoUrl, onUpload }: ImageUploadPr
       return
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be 2MB or smaller.')
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Image must be 8MB or smaller before compression.')
       event.target.value = ''
       return
     }
@@ -44,14 +100,15 @@ export default function ImageUpload({ currentPhotoUrl, onUpload }: ImageUploadPr
       if (userError) throw userError
       if (!user) throw new Error('You must be signed in to upload a photo.')
 
-      const extension = file.name.split('.').pop() || 'jpg'
+      const compressedFile = await compressImage(file)
+      const extension = compressedFile.name.split('.').pop() || 'jpg'
       const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, {
+        .upload(filePath, compressedFile, {
           upsert: true,
-          contentType: file.type,
+          contentType: compressedFile.type,
         })
 
       if (uploadError) throw uploadError
@@ -78,21 +135,7 @@ export default function ImageUpload({ currentPhotoUrl, onUpload }: ImageUploadPr
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-28 h-28 rounded-full border border-gray-300 bg-gray-50 overflow-hidden flex items-center justify-center">
-          {currentPhotoUrl ? (
-            <Image
-              src={currentPhotoUrl}
-              alt="Profile photo"
-              width={112}
-              height={112}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <span className="text-3xl" aria-label="Camera placeholder" role="img">
-              📷
-            </span>
-          )}
-        </div>
+        <Avatar name={currentName} photoUrl={currentPhotoUrl} size="lg" className="border border-gray-300" />
 
         <input
           ref={fileInputRef}

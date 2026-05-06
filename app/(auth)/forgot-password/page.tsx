@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { FormEvent, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { buildPublicUrl } from '@/lib/auth'
 
 export default function ForgotPasswordPage() {
   const supabase = createClient()
@@ -25,7 +26,7 @@ export default function ForgotPasswordPage() {
 
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: `${window.location.origin}/update-password`,
+        redirectTo: buildPublicUrl('/update-password'),
       })
 
       if (resetError) throw resetError

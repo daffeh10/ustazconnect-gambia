@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { normalizeAuthActionType, passwordMeetsRequirements } from '@/lib/auth'
 
 export default function UpdatePasswordPage() {
   const [supabase] = useState(() => createClient())
@@ -25,6 +26,9 @@ export default function UpdatePasswordPage() {
 
         const code = searchParams.get('code')
         if (code) {
+          // Sign out any existing session first to prevent conflicts when a
+          // different user is already logged in on this browser.
+          await supabase.auth.signOut()
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
           if (exchangeError) throw exchangeError
           if (!isMounted) return
@@ -51,7 +55,7 @@ export default function UpdatePasswordPage() {
         }
 
         const tokenHash = searchParams.get('token_hash')
-        const type = searchParams.get('type')
+        const type = normalizeAuthActionType(searchParams.get('type'))
 
         if (tokenHash && type === 'recovery') {
           const { error: verifyError } = await supabase.auth.verifyOtp({
@@ -61,6 +65,7 @@ export default function UpdatePasswordPage() {
 
           if (verifyError) throw verifyError
           if (!isMounted) return
+          window.history.replaceState({}, document.title, window.location.pathname)
           setHasRecoverySession(true)
           setIsReady(true)
           return
@@ -109,13 +114,13 @@ export default function UpdatePasswordPage() {
       return
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
       return
     }
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+    if (!passwordMeetsRequirements(password)) {
+      setError('Password must be at least 8 characters long and include 1 special character.')
       return
     }
 
@@ -171,7 +176,7 @@ export default function UpdatePasswordPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Minimum 8 characters"
+                  placeholder="Minimum 8 characters and 1 special character"
                   minLength={8}
                   required
                 />

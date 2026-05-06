@@ -262,7 +262,7 @@ export default function FamilyDashboardPage() {
               Browse verified tutors by subject, location, and availability.
             </p>
             <Link
-              href="/find-ustaz"
+              href="/find-tutor"
               className="inline-block mt-4 bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Find a Tutor
@@ -400,7 +400,9 @@ export default function FamilyDashboardPage() {
               <span>Loading lesson timeline...</span>
             </div>
           ) : lessons.length === 0 ? (
-            <p className="text-gray-600">No lessons yet. Once a tutor accepts your booking, lessons will appear here.</p>
+            <p className="text-gray-600">
+              No lessons yet. Once a tutor accepts your booking and payment is completed, lessons will appear here.
+            </p>
           ) : (
             <div className="space-y-8">
               {Object.entries(lessonsByBooking).map(([bookingId, bookingLessons]) => {
@@ -435,7 +437,7 @@ export default function FamilyDashboardPage() {
                           </p>
                         </div>
                         <Link
-                          href={`/ustaz/${tutorId}`}
+                          href={`/tutor/${tutorId}`}
                           className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-white font-medium hover:bg-emerald-700 transition-colors"
                         >
                           Review Tutor

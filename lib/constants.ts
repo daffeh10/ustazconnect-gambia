@@ -4,7 +4,7 @@ export const SUBJECT_CATEGORIES = [
     subjects: [
       'Quran Reading',
       'Tajweed',
-      'Hifz (Memorisation)',
+      'Hifz (Memorization)',
       'Arabic Language',
       'Islamic Studies',
     ],
@@ -15,7 +15,6 @@ export const SUBJECT_CATEGORIES = [
       'Basic Mathematics',
       'General Mathematics',
       'Additional Mathematics',
-      'Further Mathematics',
       'Statistics',
     ],
   },
@@ -50,7 +49,15 @@ export const SUBJECT_CATEGORIES = [
   },
   {
     category: 'Exam Preparation',
-    subjects: ['WASSCE Prep', 'NAQEB Prep', 'University Entrance'],
+    subjects: [
+      'WASSCE Prep',
+      'Private WASSCE Prep',
+      'GABECE Prep',
+      'Cambridge Checkpoint Prep',
+      'Cambridge IGCSE Prep',
+      'SAT Prep',
+      'IELTS Prep',
+    ],
   },
 ] as const
 

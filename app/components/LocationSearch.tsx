@@ -10,9 +10,9 @@ export default function LocationSearch() {
 
   function handleSearch() {
     if (selectedLocation) {
-      router.push(`/find-ustaz?location=${encodeURIComponent(selectedLocation)}`)
+      router.push(`/find-tutor?location=${encodeURIComponent(selectedLocation)}`)
     } else {
-      router.push('/find-ustaz')
+      router.push('/find-tutor')
     }
   }
 

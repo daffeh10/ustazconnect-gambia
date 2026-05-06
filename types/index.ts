@@ -13,7 +13,7 @@ export interface UstazProfile {
 
 export interface Inquiry {
   id: string
-  ustaz_id: string
+  tutor_id: string
   family_name: string
   family_phone: string
   message: string | null

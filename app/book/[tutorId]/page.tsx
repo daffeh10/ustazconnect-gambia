@@ -1,10 +1,10 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Avatar from '@/app/components/Avatar'
 
 interface TutorProfile {
   id: string
@@ -14,6 +14,7 @@ interface TutorProfile {
   hourly_rate: number | null
   available_days: string[] | null
   profile_photo_url: string | null
+  offers_online?: boolean | null
 }
 
 interface FamilyProfileRow {
@@ -40,6 +41,7 @@ export default function BookTutorPage() {
   const [familyName, setFamilyName] = useState('')
   const [familyPhone, setFamilyPhone] = useState('')
   const [specialRequests, setSpecialRequests] = useState('')
+  const [lessonFormat, setLessonFormat] = useState<'in_person' | 'online'>('in_person')
 
   useEffect(() => {
     let isMounted = true
@@ -101,7 +103,7 @@ export default function BookTutorPage() {
 
         const { data: tutorData, error: tutorError } = await supabase
           .from('tutor_profiles')
-          .select('id,name,location,subjects,hourly_rate,available_days,profile_photo_url')
+          .select('id,name,location,subjects,hourly_rate,available_days,profile_photo_url,offers_online')
           .eq('id', tutorId)
           .maybeSingle<TutorProfile>()
 
@@ -115,6 +117,7 @@ export default function BookTutorPage() {
         }
 
         setTutor(tutorData)
+        setLessonFormat('in_person')
         if ((tutorData.subjects || []).length > 0) {
           setSelectedSubject(tutorData.subjects?.[0] || '')
         }
@@ -175,23 +178,39 @@ export default function BookTutorPage() {
       const serviceFee = Math.round(monthlyTotal * 0.03)
       const grandTotal = monthlyTotal + serviceFee
 
-      const { error: insertError } = await supabase.from('bookings').insert([
+      const bookingPayload = {
+        tutor_id: tutor.id,
+        family_id: familyId,
+        family_name: familyName.trim(),
+        family_phone: familyPhone.trim() || null,
+        subjects: [selectedSubject],
+        hours_per_month: hoursPerMonth,
+        hourly_rate: hourlyRate,
+        monthly_total: monthlyTotal,
+        service_fee: serviceFee,
+        grand_total: grandTotal,
+        special_requests: specialRequests.trim() || null,
+        preferred_days: preferredDays,
+        status: 'pending',
+      }
+
+      let { error: insertError } = await supabase.from('bookings').insert([
         {
-          tutor_id: tutor.id,
-          family_id: familyId,
-          family_name: familyName.trim(),
-          family_phone: familyPhone.trim() || null,
-          subjects: [selectedSubject],
-          hours_per_month: hoursPerMonth,
-          hourly_rate: hourlyRate,
-          monthly_total: monthlyTotal,
-          service_fee: serviceFee,
-          grand_total: grandTotal,
-          special_requests: specialRequests.trim() || null,
-          preferred_days: preferredDays,
-          status: 'pending',
+          ...bookingPayload,
+          lesson_format: lessonFormat,
         },
       ])
+
+      if (
+        insertError &&
+        (
+          insertError.message.toLowerCase().includes('lesson_format') ||
+          insertError.message.toLowerCase().includes('column')
+        )
+      ) {
+        const fallback = await supabase.from('bookings').insert([bookingPayload])
+        insertError = fallback.error
+      }
 
       if (insertError) throw insertError
 
@@ -224,7 +243,7 @@ export default function BookTutorPage() {
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4">
         <div className="max-w-3xl mx-auto">
-          <Link href="/find-ustaz" className="text-sm text-emerald-600 hover:underline">
+          <Link href="/find-tutor" className="text-sm text-emerald-600 hover:underline">
             ← Back to tutors
           </Link>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mt-6 text-center">
@@ -240,7 +259,7 @@ export default function BookTutorPage() {
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4">
         <div className="max-w-3xl mx-auto">
-          <Link href={`/ustaz/${tutorId}`} className="text-sm text-emerald-600 hover:underline">
+          <Link href={`/tutor/${tutorId}`} className="text-sm text-emerald-600 hover:underline">
             ← Back to tutor profile
           </Link>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mt-6 text-center">
@@ -265,7 +284,7 @@ export default function BookTutorPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        <Link href={`/ustaz/${tutor.id}`} className="text-sm text-emerald-600 hover:underline">
+        <Link href={`/tutor/${tutor.id}`} className="text-sm text-emerald-600 hover:underline">
           ← Back to tutor profile
         </Link>
 
@@ -273,21 +292,7 @@ export default function BookTutorPage() {
           {!isSuccess ? (
             <>
               <div className="flex items-center gap-4 mb-8">
-                <div className="w-16 h-16 rounded-full overflow-hidden bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                  {tutor.profile_photo_url ? (
-                    <Image
-                      src={tutor.profile_photo_url}
-                      alt={`${tutor.name} photo`}
-                      width={64}
-                      height={64}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-emerald-700 font-bold text-2xl">
-                      {tutor.name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </div>
+                <Avatar name={tutor.name} photoUrl={tutor.profile_photo_url} size="md" />
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">{tutor.name}</h1>
                   <p className="text-gray-600 mt-1">{tutor.location || 'Location not available'}</p>
@@ -332,6 +337,42 @@ export default function BookTutorPage() {
                     ))}
                   </select>
                 </div>
+
+                {tutor.offers_online && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Lesson format</label>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                        <input
+                          type="radio"
+                          name="lesson-format"
+                          value="in_person"
+                          checked={lessonFormat === 'in_person'}
+                          onChange={() => setLessonFormat('in_person')}
+                          className="h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700">In-person</span>
+                      </label>
+                      <label className="flex items-center gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                        <input
+                          type="radio"
+                          name="lesson-format"
+                          value="online"
+                          checked={lessonFormat === 'online'}
+                          onChange={() => setLessonFormat('online')}
+                          className="h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700">Online</span>
+                      </label>
+                    </div>
+                    {lessonFormat === 'online' && (
+                      <p className="mt-3 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        Your tutor will contact you with a meeting link (WhatsApp, Zoom, or Google Meet)
+                        before each lesson.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {(tutor.available_days || []).length > 0 && (
                   <div>
@@ -443,7 +484,7 @@ export default function BookTutorPage() {
                 {tutor.name} has 48 hours to respond. We&apos;ll notify you by WhatsApp.
               </p>
               <Link
-                href="/find-ustaz"
+                href="/find-tutor"
                 className="inline-block mt-6 bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors"
               >
                 Browse more tutors

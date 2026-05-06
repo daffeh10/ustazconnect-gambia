@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import StarRating from '@/app/components/StarRating'
-import Link from 'next/link'
+import { useAuth } from '@/hooks/useAuth'
 
 interface LeaveReviewFormProps {
   tutorId: string
@@ -13,10 +13,11 @@ interface LeaveReviewFormProps {
 
 export default function LeaveReviewForm({ tutorId, tutorName, onSubmitted }: LeaveReviewFormProps) {
   const supabase = createClient()
+  const { user, role, isLoading: isAuthLoading, openAuthModal } = useAuth()
 
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isFamilyUser, setIsFamilyUser] = useState(false)
+  const [canReviewTutor, setCanReviewTutor] = useState(false)
+  const [isEligibilityLoading, setIsEligibilityLoading] = useState(true)
   const [familyId, setFamilyId] = useState('')
   const [familyName, setFamilyName] = useState('')
   const [rating, setRating] = useState(0)
@@ -29,26 +30,20 @@ export default function LeaveReviewForm({ tutorId, tutorName, onSubmitted }: Lea
   useEffect(() => {
     let isMounted = true
 
-    async function checkUser() {
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
+    async function syncReviewAuthState() {
+      if (isAuthLoading) return
 
-        if (userError) throw userError
+      setIsEligibilityLoading(true)
+
+      try {
         if (!isMounted || !user) {
-          setIsLoggedIn(false)
           setIsFamilyUser(false)
+          setCanReviewTutor(false)
           setFamilyId('')
+          setFamilyName('')
+          setIsEligibilityLoading(false)
           return
         }
-        setIsLoggedIn(true)
-
-        const role =
-          typeof user.user_metadata?.role === 'string'
-            ? user.user_metadata.role.toLowerCase().trim()
-            : ''
 
         let canReview = role === 'family'
 
@@ -66,7 +61,10 @@ export default function LeaveReviewForm({ tutorId, tutorName, onSubmitted }: Lea
 
         if (!canReview) {
           setIsFamilyUser(false)
+          setCanReviewTutor(false)
           setFamilyId('')
+          setFamilyName('')
+          setIsEligibilityLoading(false)
           return
         }
 
@@ -77,24 +75,39 @@ export default function LeaveReviewForm({ tutorId, tutorName, onSubmitted }: Lea
         setIsFamilyUser(true)
         setFamilyId(user.id)
         setFamilyName(metadataName || fallbackName)
+
+        const { count, error: lessonsError } = await supabase
+          .from('lessons')
+          .select('id', { count: 'exact', head: true })
+          .eq('family_id', user.id)
+          .eq('tutor_id', tutorId)
+          .eq('status', 'completed')
+
+        if (lessonsError) throw lessonsError
+        if (!isMounted) return
+
+        setCanReviewTutor(Boolean(count && count > 0))
       } catch (err) {
         console.error(err)
         if (isMounted) {
-          setIsLoggedIn(false)
           setIsFamilyUser(false)
+          setCanReviewTutor(false)
           setFamilyId('')
+          setFamilyName('')
         }
       } finally {
-        if (isMounted) setIsCheckingAuth(false)
+        if (isMounted) {
+          setIsEligibilityLoading(false)
+        }
       }
     }
 
-    checkUser()
+    void syncReviewAuthState()
 
     return () => {
       isMounted = false
     }
-  }, [supabase])
+  }, [isAuthLoading, role, supabase, tutorId, user])
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -140,19 +153,23 @@ export default function LeaveReviewForm({ tutorId, tutorName, onSubmitted }: Lea
     }
   }
 
-  if (isCheckingAuth) {
+  if (isAuthLoading || isEligibilityLoading) {
     return null
   }
 
-  if (!isLoggedIn) {
+  if (!user) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
         <p className="text-sm text-gray-700">
           Sign in as a Family/Student account to leave a review.
         </p>
-        <Link href="/login" className="inline-block mt-2 text-sm text-emerald-700 font-medium hover:underline">
-          Go to sign in
-        </Link>
+        <button
+          type="button"
+          onClick={() => openAuthModal()}
+          className="inline-block mt-2 text-sm text-emerald-700 font-medium hover:underline"
+        >
+          Sign in to continue
+        </button>
       </div>
     )
   }
@@ -161,6 +178,16 @@ export default function LeaveReviewForm({ tutorId, tutorName, onSubmitted }: Lea
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
         <p className="text-sm text-gray-700">Only Family/Student accounts can submit reviews.</p>
+      </div>
+    )
+  }
+
+  if (!canReviewTutor) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <p className="text-sm text-gray-700">
+          You can leave a review after your family completes at least one lesson with {tutorName}.
+        </p>
       </div>
     )
   }

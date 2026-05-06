@@ -1,19 +1,41 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request,
-  })
-
-  const pathname = request.nextUrl.pathname
-  const protectedPaths = ['/dashboard', '/family', '/book', '/messages']
-  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/')
-  const isAdminLoginRoute = pathname === '/admin/login'
-  const isProtectedAdminRoute = isAdminRoute && !isAdminLoginRoute
-  const requiresAuth = protectedPaths.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
+function isProtectedUserRoute(pathname: string) {
+  return (
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    pathname === '/family' ||
+    pathname.startsWith('/family/') ||
+    pathname === '/book' ||
+    pathname.startsWith('/book/')
   )
+}
+
+function isAdminRoute(pathname: string) {
+  return pathname === '/admin' || pathname.startsWith('/admin/')
+}
+
+function getReturnTo(request: NextRequest) {
+  const query = request.nextUrl.search || ''
+  return `${request.nextUrl.pathname}${query}`
+}
+
+export async function proxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+  const adminRoute = isAdminRoute(pathname)
+  const isAdminLogin = pathname === '/admin/login'
+  const protectedUserRoute = isProtectedUserRoute(pathname)
+
+  if (!adminRoute && !protectedUserRoute) {
+    return NextResponse.next({ request })
+  }
+
+  if (isAdminLogin) {
+    return NextResponse.next({ request })
+  }
+
+  let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,12 +47,10 @@ export async function proxy(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options)
-          )
+          })
         },
       },
     }
@@ -39,73 +59,60 @@ export async function proxy(request: NextRequest) {
   try {
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser()
 
-    if (isProtectedAdminRoute) {
-      if (!user) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/admin/login'
-        url.searchParams.set('next', pathname)
-        return NextResponse.redirect(url)
+    if (userError) {
+      throw userError
+    }
+
+    if (!user) {
+      if (adminRoute) {
+        const adminLoginUrl = request.nextUrl.clone()
+        adminLoginUrl.pathname = '/admin/login'
+        adminLoginUrl.searchParams.set('next', pathname)
+        return NextResponse.redirect(adminLoginUrl)
       }
 
-      const { data: adminRow, error: adminError } = await supabase
-        .from('admin_users')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (adminError) throw adminError
-      if (!adminRow) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/admin/login'
-        url.searchParams.set('next', pathname)
-        return NextResponse.redirect(url)
+      if (protectedUserRoute) {
+        const loginUrl = request.nextUrl.clone()
+        loginUrl.pathname = '/login'
+        loginUrl.searchParams.set('returnTo', getReturnTo(request))
+        return NextResponse.redirect(loginUrl)
       }
     }
 
-    if (isAdminLoginRoute && user) {
+    if (adminRoute) {
       const { data: adminRow, error: adminError } = await supabase
         .from('admin_users')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .maybeSingle()
 
-      if (adminError) throw adminError
-      if (adminRow) {
-        const url = request.nextUrl.clone()
-        const nextPath = request.nextUrl.searchParams.get('next')
-        url.pathname =
-          nextPath && nextPath.startsWith('/admin') && nextPath !== '/admin/login'
-            ? nextPath
-            : '/admin'
-        url.search = ''
-        return NextResponse.redirect(url)
+      if (adminError || !adminRow) {
+        const adminLoginUrl = request.nextUrl.clone()
+        adminLoginUrl.pathname = '/admin/login'
+        adminLoginUrl.searchParams.set('next', pathname)
+        return NextResponse.redirect(adminLoginUrl)
       }
-    }
-
-    if (!user && requiresAuth) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      return NextResponse.redirect(url)
     }
 
     return response
   } catch (error) {
     console.error('Proxy auth check failed:', error)
 
-    // Fail closed for protected routes.
-    if (isProtectedAdminRoute) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/admin/login'
-      url.searchParams.set('next', pathname)
-      return NextResponse.redirect(url)
+    if (adminRoute) {
+      const adminLoginUrl = request.nextUrl.clone()
+      adminLoginUrl.pathname = '/admin/login'
+      adminLoginUrl.searchParams.set('next', pathname)
+      return NextResponse.redirect(adminLoginUrl)
     }
 
-    if (requiresAuth) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      return NextResponse.redirect(url)
+    if (protectedUserRoute) {
+      const loginUrl = request.nextUrl.clone()
+      loginUrl.pathname = '/login'
+      loginUrl.searchParams.set('returnTo', getReturnTo(request))
+      return NextResponse.redirect(loginUrl)
     }
 
     return response
@@ -113,7 +120,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/dashboard/:path*', '/family/:path*', '/book/:path*', '/admin/:path*'],
 }

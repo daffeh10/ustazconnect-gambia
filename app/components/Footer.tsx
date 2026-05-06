@@ -8,13 +8,13 @@ export default function Footer() {
           <div>
             <h3 className="text-white font-bold text-lg mb-4">TutorConnect Gambia</h3>
             <p className="text-sm">
-              Connecting Gambian families with trusted tutors since 2025.
+              Connecting Gambian families with trusted tutors since 2026.
             </p>
           </div>
           <div>
             <h4 className="text-white font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-sm">
-              <li><Link href="/find-ustaz" className="hover:text-white transition">Find a Tutor</Link></li>
+              <li><Link href="/find-tutor" className="hover:text-white transition">Find a Tutor</Link></li>
               <li><Link href="/register/tutor" className="hover:text-white transition">Become a Tutor</Link></li>
               <li><Link href="/login" className="hover:text-white transition">Sign In</Link></li>
             </ul>
@@ -31,13 +31,24 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-4">Contact</h4>
             <p className="text-sm">
-              Email: info@tutorconnect.gm<br />
-              WhatsApp: +220 XXX XXXX
+              Email: info@tutorconnect.gm
+              <br />
+              WhatsApp:{' '}
+              <a
+                href="https://wa.me/220XXXXXXX"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition"
+              >
+                +220 XXX XXXX
+              </a>
+              <br />
+              Location: Serrekunda, The Gambia
             </p>
           </div>
         </div>
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
-          © 2025 TutorConnect Gambia. All rights reserved.
+          © 2026 TutorConnect Gambia. All rights reserved.
         </div>
       </div>
     </footer>

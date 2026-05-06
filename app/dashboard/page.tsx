@@ -8,6 +8,18 @@ import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import ImageUpload from '@/app/components/ImageUpload'
 import DocumentUpload from '@/app/components/DocumentUpload'
 import LessonCard, { Lesson } from '@/app/components/LessonCard'
+import {
+  AGE_GROUP_OPTIONS,
+  EDUCATION_OPTIONS,
+  extractGambiaPhoneDigits,
+  formatGambiaPhoneFromDigits,
+  isMissingEnhancedTutorProfileColumnError,
+  isValidGambiaPhoneDigits,
+  LANGUAGE_OPTIONS,
+  sanitizeGambiaPhoneDigits,
+  TRAVEL_RADIUS_OPTIONS,
+  TUTOR_PROFILE_TASK_2_3_SQL,
+} from '@/lib/tutor-profile'
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const COMMISSION_RATE = 10
@@ -16,8 +28,8 @@ const DEFAULT_LESSON_MINUTES = 120
 interface TutorProfileRow {
   id: string
   user_id: string
-  name: string
-  email: string
+  name: string | null
+  email: string | null
   phone: string | null
   location: string | null
   subjects: string[] | null
@@ -27,6 +39,26 @@ interface TutorProfileRow {
   available_days?: string[] | null
   available_times?: string[] | null
   profile_photo_url: string | null
+  is_approved?: boolean | null
+  offers_online?: boolean | null
+  areas_covered?: string[] | null
+  travel_radius_km?: number | null
+  languages?: string[] | null
+  age_groups?: string[] | null
+  education?: string | null
+  consent_given_at?: string | null
+}
+
+function normalizeStringArray(value: string[] | null | undefined) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+}
+
+function areSameStringArrays(left: string[], right: string[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((item, index) => item === right[index])
 }
 
 interface InquiryRow {
@@ -69,6 +101,19 @@ interface PayoutRow {
   completed_at: string | null
 }
 
+type TutorProfileSaveResult = Pick<
+  TutorProfileRow,
+  | 'id'
+  | 'areas_covered'
+  | 'languages'
+  | 'age_groups'
+  | 'education'
+  | 'experience_years'
+  | 'offers_online'
+  | 'available_days'
+  | 'available_times'
+>
+
 export default function DashboardPage() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
@@ -87,7 +132,13 @@ export default function DashboardPage() {
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [storedPhoneDigits, setStoredPhoneDigits] = useState('')
   const [location, setLocation] = useState('')
+  const [travelRadiusKm, setTravelRadiusKm] = useState('5')
+  const [areasCovered, setAreasCovered] = useState<string[]>([])
+  const [languages, setLanguages] = useState<string[]>(['English'])
+  const [ageGroups, setAgeGroups] = useState<string[]>([])
+  const [education, setEducation] = useState('')
   const [experienceYears, setExperienceYears] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
   const [bio, setBio] = useState('')
@@ -96,7 +147,12 @@ export default function DashboardPage() {
   const [availableTimes, setAvailableTimes] = useState<string[]>([])
   const [timeSlotInput, setTimeSlotInput] = useState('')
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('')
+  const [isApproved, setIsApproved] = useState(false)
+  const [offersOnline, setOffersOnline] = useState(false)
+  const [hasTutorConsent, setHasTutorConsent] = useState(false)
+  const [consentGivenAt, setConsentGivenAt] = useState<string | null>(null)
   const [bookingRequests, setBookingRequests] = useState<BookingRow[]>([])
+  const [awaitingPaymentBookings, setAwaitingPaymentBookings] = useState<BookingRow[]>([])
   const [activeBookings, setActiveBookings] = useState<BookingRow[]>([])
   const [isBookingsLoading, setIsBookingsLoading] = useState(false)
   const [bookingsError, setBookingsError] = useState('')
@@ -137,22 +193,11 @@ export default function DashboardPage() {
     setInquiriesError('')
 
     try {
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('inquiries')
         .select('id,family_name,family_phone,message,created_at')
         .eq('tutor_id', tutorProfileId)
         .order('created_at', { ascending: false })
-
-      // Backward compatibility for legacy column name.
-      if (error && error.message.toLowerCase().includes('tutor_id')) {
-        const fallback = await supabase
-          .from('inquiries')
-          .select('id,family_name,family_phone,message,created_at')
-          .eq('ustaz_id', tutorProfileId)
-          .order('created_at', { ascending: false })
-        data = fallback.data
-        error = fallback.error
-      }
 
       if (error) throw error
       setInquiries((data ?? []) as InquiryRow[])
@@ -190,10 +235,12 @@ export default function DashboardPage() {
 
       const rows = (data ?? []) as BookingRow[]
       setBookingRequests(rows.filter((booking) => booking.status === 'pending'))
-      setActiveBookings(rows.filter((booking) => booking.status === 'confirmed' || booking.status === 'active'))
+      setAwaitingPaymentBookings(rows.filter((booking) => booking.status === 'confirmed'))
+      setActiveBookings(rows.filter((booking) => booking.status === 'active'))
     } catch (err) {
       console.error(err)
       setBookingRequests([])
+      setAwaitingPaymentBookings([])
       setActiveBookings([])
       setBookingsError('Could not load booking requests right now. Please refresh and try again.')
     } finally {
@@ -270,38 +317,11 @@ export default function DashboardPage() {
 
       if (updateError) throw updateError
 
-      const { count, error: existingLessonsError } = await supabase
-        .from('lessons')
-        .select('id', { count: 'exact', head: true })
-        .eq('booking_id', booking.id)
-
-      if (existingLessonsError) throw existingLessonsError
-
-      if (!count) {
-        const numLessons = Math.floor(booking.hours_per_month / 2)
-        const lessonRows = Array.from({ length: numLessons }, (_, index) => ({
-          booking_id: booking.id,
-          tutor_id: booking.tutor_id,
-          family_id: booking.family_id,
-          lesson_number: index + 1,
-          subject: booking.subjects?.[0] || null,
-          status: 'scheduled',
-        }))
-
-        if (lessonRows.length > 0) {
-          const { error: lessonsInsertError } = await supabase.from('lessons').insert(lessonRows)
-          if (lessonsInsertError) throw lessonsInsertError
-        }
-      }
-
       setBookingRequests((prev) => prev.filter((item) => item.id !== booking.id))
-      setActiveBookings((prev) => [{ ...booking, status: 'confirmed' }, ...prev])
+      setAwaitingPaymentBookings((prev) => [{ ...booking, status: 'confirmed' }, ...prev])
       setDeclineBookingId('')
       setDeclineReason('')
-      if (profileId) {
-        void loadLessonsForTutor(profileId)
-      }
-      showBookingToast('Booking accepted.')
+      showBookingToast('Booking accepted. The family can now complete payment.')
     } catch (err) {
       console.error(err)
       setBookingsError('Could not accept this booking. Please try again.')
@@ -361,6 +381,7 @@ export default function DashboardPage() {
 
         setUserId(user.id)
         setEmail(user.email || '')
+        const metadata = user.user_metadata ?? {}
 
         const { data: profile, error: profileError } = await supabase
           .from('tutor_profiles')
@@ -372,10 +393,17 @@ export default function DashboardPage() {
         if (!isMounted) return
 
         if (profile) {
+          const normalizedStoredPhone = extractGambiaPhoneDigits(profile.phone)
           setProfileId(profile.id)
           setName(profile.name || '')
-          setPhone(profile.phone || '')
+          setStoredPhoneDigits(normalizedStoredPhone)
+          setPhone('')
           setLocation(profile.location || '')
+          setTravelRadiusKm(profile.travel_radius_km != null ? String(profile.travel_radius_km) : '5')
+          setAreasCovered(normalizeStringArray(profile.areas_covered))
+          setLanguages(normalizeStringArray(profile.languages).length > 0 ? normalizeStringArray(profile.languages) : ['English'])
+          setAgeGroups(normalizeStringArray(profile.age_groups))
+          setEducation(profile.education || '')
           setExperienceYears(profile.experience_years != null ? String(profile.experience_years) : '')
           setHourlyRate(profile.hourly_rate != null ? String(profile.hourly_rate) : '')
           setBio(profile.bio || '')
@@ -383,6 +411,10 @@ export default function DashboardPage() {
           setAvailableDays(Array.isArray(profile.available_days) ? profile.available_days : [])
           setAvailableTimes(Array.isArray(profile.available_times) ? profile.available_times : [])
           setProfilePhotoUrl(profile.profile_photo_url || '')
+          setIsApproved(Boolean(profile.is_approved))
+          setOffersOnline(Boolean(profile.offers_online))
+          setConsentGivenAt(profile.consent_given_at || null)
+          setHasTutorConsent(Boolean(profile.consent_given_at))
           setEmail(profile.email || user.email || '')
           void loadBookingsForTutor(profile.id)
           void loadLessonsForTutor(profile.id)
@@ -390,8 +422,33 @@ export default function DashboardPage() {
           void loadInquiriesForTutor(profile.id)
         } else {
           const fallbackName =
-            typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : ''
+            typeof metadata.full_name === 'string' ? metadata.full_name : ''
+          const fallbackPhone =
+            typeof metadata.phone === 'string' ? extractGambiaPhoneDigits(metadata.phone) : ''
+          const fallbackSubjects = Array.isArray(metadata.selected_subjects)
+            ? metadata.selected_subjects.filter((item): item is string => typeof item === 'string')
+            : []
+          const fallbackAreasCovered = normalizeStringArray(metadata.areas_covered as string[] | undefined)
+          const fallbackLanguages = normalizeStringArray(metadata.languages as string[] | undefined)
+          const fallbackAgeGroups = normalizeStringArray(metadata.age_groups as string[] | undefined)
+
+          setIsApproved(false)
+          setOffersOnline(Boolean(metadata.offers_online))
           setName(fallbackName)
+          setStoredPhoneDigits(fallbackPhone)
+          setPhone('')
+          setTravelRadiusKm(typeof metadata.travel_radius_km === 'number' ? String(metadata.travel_radius_km) : '5')
+          setAreasCovered(fallbackAreasCovered)
+          setLanguages(fallbackLanguages.length > 0 ? fallbackLanguages : ['English'])
+          setAgeGroups(fallbackAgeGroups)
+          setEducation(typeof metadata.education === 'string' ? metadata.education : '')
+          setExperienceYears(
+            typeof metadata.experience_years === 'number' ? String(metadata.experience_years) : ''
+          )
+          setSubjects(fallbackSubjects)
+          setHasTutorConsent(typeof metadata.consent_given_at === 'string')
+          setConsentGivenAt(typeof metadata.consent_given_at === 'string' ? metadata.consent_given_at : null)
+          setLocation('')
           setBookingRequests([])
           setActiveBookings([])
           setBookingsError('')
@@ -439,6 +496,24 @@ export default function DashboardPage() {
     )
   }
 
+  function toggleAreaCovered(area: string) {
+    setAreasCovered((prev) =>
+      prev.includes(area) ? prev.filter((item) => item !== area) : [...prev, area]
+    )
+  }
+
+  function toggleLanguage(language: string) {
+    setLanguages((prev) =>
+      prev.includes(language) ? prev.filter((item) => item !== language) : [...prev, language]
+    )
+  }
+
+  function toggleAgeGroup(ageGroup: string) {
+    setAgeGroups((prev) =>
+      prev.includes(ageGroup) ? prev.filter((item) => item !== ageGroup) : [...prev, ageGroup]
+    )
+  }
+
   function addTimeSlot() {
     const cleaned = timeSlotInput.trim()
     if (!cleaned) return
@@ -468,7 +543,19 @@ export default function DashboardPage() {
     }
 
     if (!name.trim()) {
-      setError('Name is required.')
+      setError('Please enter your full name before saving.')
+      return
+    }
+
+    const phoneDigitsToSave = sanitizeGambiaPhoneDigits(phone) || storedPhoneDigits
+
+    if (!isValidGambiaPhoneDigits(phoneDigitsToSave)) {
+      setError('Please enter your 7-digit Gambian phone number after +220 before saving.')
+      return
+    }
+
+    if (!hasTutorConsent) {
+      setError('Please confirm your tutor consent before saving your profile.')
       return
     }
 
@@ -487,12 +574,21 @@ export default function DashboardPage() {
         throw new Error('Experience years must be a valid non-negative number.')
       }
 
+      const travelRadiusValue = Number(travelRadiusKm) || 5
+      const consentTimestamp = consentGivenAt || new Date().toISOString()
+      const submittedAreasCovered = [...areasCovered]
+      const submittedLanguages = [...languages]
+      const submittedAgeGroups = [...ageGroups]
+      const submittedEducation = education || ''
+      const submittedAvailableDays = [...availableDays]
+      const submittedAvailableTimes = [...availableTimes]
+
       const basePayload = {
         ...(profileId ? { id: profileId } : {}),
         user_id: userId,
         name: name.trim(),
         email,
-        phone: phone.trim() || null,
+        phone: formatGambiaPhoneFromDigits(phoneDigitsToSave) || null,
         location: location || null,
         subjects,
         experience_years: experienceValue,
@@ -500,42 +596,45 @@ export default function DashboardPage() {
         bio: bio.trim() || null,
         profile_photo_url: profilePhotoUrl || null,
         is_active: true,
-        is_approved: true,
+        is_approved: isApproved,
         updated_at: new Date().toISOString(),
       }
 
-      let usedFallbackForDays = false
+      let usedFallbackForOptionalColumns = false
       let { data, error: saveError } = await supabase
         .from('tutor_profiles')
         .upsert({
           ...basePayload,
-          available_days: availableDays,
-          available_times: availableTimes,
+          offers_online: offersOnline,
+          available_days: submittedAvailableDays,
+          available_times: submittedAvailableTimes,
+          areas_covered: submittedAreasCovered,
+          travel_radius_km: travelRadiusValue,
+          languages: submittedLanguages,
+          age_groups: submittedAgeGroups,
+          education: submittedEducation,
+          consent_given_at: consentTimestamp,
         })
-        .select('id')
+        .select('id,areas_covered,languages,age_groups,education,experience_years,offers_online,available_days,available_times')
         .single()
 
       // Graceful fallback while DB schema catches up.
       if (
         saveError &&
-        (
-          saveError.message.toLowerCase().includes('available_days') ||
-          saveError.message.toLowerCase().includes('available_times') ||
-          saveError.message.toLowerCase().includes('column')
-        )
+        isMissingEnhancedTutorProfileColumnError(saveError.message)
       ) {
         const fallbackResult = await supabase
           .from('tutor_profiles')
           .upsert(basePayload)
-          .select('id')
+          .select('id,areas_covered,languages,age_groups,education,experience_years,offers_online,available_days,available_times')
           .single()
         data = fallbackResult.data
         saveError = fallbackResult.error
 
         if (!saveError) {
-          usedFallbackForDays = true
+          usedFallbackForOptionalColumns = true
           setSaveMessage(
-            'Profile saved. To enable availability fields, run: ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS available_days TEXT[] DEFAULT \'{}\'; ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS available_times TEXT[] DEFAULT \'{}\';'
+            `Profile saved with the current schema. To enable all Task 2.3 tutor fields, run: ${TUTOR_PROFILE_TASK_2_3_SQL}`
           )
           if (successTimerRef.current) {
             clearTimeout(successTimerRef.current)
@@ -549,10 +648,41 @@ export default function DashboardPage() {
       if (saveError) throw saveError
       if (data?.id) {
         setProfileId(data.id)
+        setConsentGivenAt(consentTimestamp)
+        setStoredPhoneDigits(phoneDigitsToSave)
+        setPhone('')
         void loadInquiriesForTutor(data.id)
       }
 
-      if (!usedFallbackForDays) {
+      const savedProfile = data as TutorProfileSaveResult | null
+      if (savedProfile) {
+        const persistedAreasCovered = normalizeStringArray(savedProfile.areas_covered)
+        const persistedLanguages = normalizeStringArray(savedProfile.languages)
+        const persistedAgeGroups = normalizeStringArray(savedProfile.age_groups)
+        const persistedAvailableDays = normalizeStringArray(savedProfile.available_days)
+        const persistedAvailableTimes = normalizeStringArray(savedProfile.available_times)
+        const persistedEducation = savedProfile.education || ''
+
+        setAreasCovered(persistedAreasCovered)
+        setLanguages(persistedLanguages.length > 0 ? persistedLanguages : ['English'])
+        setAgeGroups(persistedAgeGroups)
+
+        if (
+          !usedFallbackForOptionalColumns &&
+          (
+            !areSameStringArrays(persistedAreasCovered, submittedAreasCovered) ||
+            !areSameStringArrays(persistedLanguages, submittedLanguages) ||
+            !areSameStringArrays(persistedAgeGroups, submittedAgeGroups) ||
+            !areSameStringArrays(persistedAvailableDays, submittedAvailableDays) ||
+            !areSameStringArrays(persistedAvailableTimes, submittedAvailableTimes) ||
+            persistedEducation !== submittedEducation
+          )
+        ) {
+          throw new Error('Some advanced profile fields did not save correctly. Please refresh and try again.')
+        }
+      }
+
+      if (!usedFallbackForOptionalColumns) {
         setSaveMessage('✓ Profile saved successfully!')
         if (successTimerRef.current) {
           clearTimeout(successTimerRef.current)
@@ -563,7 +693,14 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error(err)
-      if (err instanceof Error && (err.message.includes('Hourly rate') || err.message.includes('Experience'))) {
+      if (
+        err instanceof Error &&
+        (
+          err.message.includes('Hourly rate') ||
+          err.message.includes('Experience') ||
+          err.message.includes('advanced profile fields')
+        )
+      ) {
         setError(err.message)
       } else {
         setError('Failed to save profile. Please try again.')
@@ -740,7 +877,7 @@ export default function DashboardPage() {
           <p className="text-base text-gray-600 mt-2">Update your profile to help families find you faster.</p>
           {profileId ? (
             <Link
-              href={`/ustaz/${profileId}`}
+              href={`/tutor/${profileId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center mt-4 px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
@@ -893,9 +1030,45 @@ export default function DashboardPage() {
         </section>
 
         <section className="mb-8 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-2xl font-bold text-gray-900">Awaiting Family Payment</h2>
+          <p className="text-sm text-gray-600 mt-1 mb-4">
+            These bookings are accepted and waiting for the family to pay before lessons start.
+          </p>
+
+          {!profileId ? (
+            <p className="text-gray-600">Save your profile first to enable bookings.</p>
+          ) : isBookingsLoading ? (
+            <div className="flex items-center gap-3 text-gray-600">
+              <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+              <span>Loading accepted bookings...</span>
+            </div>
+          ) : awaitingPaymentBookings.length === 0 ? (
+            <p className="text-gray-600">No accepted bookings are waiting for payment.</p>
+          ) : (
+            <div className="space-y-3">
+              {awaitingPaymentBookings.map((booking) => (
+                <article key={booking.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">{booking.family_name}</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {(booking.subjects || []).join(', ') || 'No subject'} · {booking.hours_per_month} hours/month
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
+                      Awaiting payment
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mb-8 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-2xl font-bold text-gray-900">Active Bookings</h2>
           <p className="text-sm text-gray-600 mt-1 mb-4">
-            Confirmed family bookings are listed here.
+            These bookings are fully paid and now have lessons ready to track.
           </p>
 
           {!profileId ? (
@@ -906,7 +1079,7 @@ export default function DashboardPage() {
               <span>Loading active bookings...</span>
             </div>
           ) : activeBookings.length === 0 ? (
-            <p className="text-gray-600">No active bookings yet.</p>
+            <p className="text-gray-600">No fully paid active bookings yet.</p>
           ) : (
             <div className="space-y-3">
               {activeBookings.map((booking) => (
@@ -969,13 +1142,14 @@ export default function DashboardPage() {
             <div className="grid lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1">
                 <ImageUpload
+                  currentName={name || 'Tutor'}
                   currentPhotoUrl={profilePhotoUrl || undefined}
                   onUpload={(url) => setProfilePhotoUrl(url)}
                 />
               </div>
 
               <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <form onSubmit={handleSave} className="space-y-5">
+                <form onSubmit={handleSave} noValidate autoComplete="off" className="space-y-5">
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name
@@ -987,7 +1161,6 @@ export default function DashboardPage() {
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   placeholder="Enter your full name"
-                  required
                 />
               </div>
 
@@ -995,14 +1168,28 @@ export default function DashboardPage() {
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                   Phone Number
                 </label>
-                <input
-                  id="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="+220 XXX XXXX"
-                />
+                <div className="flex">
+                  <span className="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-4 text-gray-600">
+                    +220
+                  </span>
+                  <input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={phone}
+                    onChange={(e) => setPhone(extractGambiaPhoneDigits(e.target.value))}
+                    className="w-full rounded-r-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                    placeholder="3825155"
+                    maxLength={7}
+                  />
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  Families only get your contact details after the first booked lesson.
+                  {storedPhoneDigits
+                    ? ' Leave this blank to keep your current saved phone number.'
+                    : ' Enter the 7 digits after +220.'}
+                </p>
               </div>
 
               <div>
@@ -1025,6 +1212,24 @@ export default function DashboardPage() {
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="travel-radius" className="block text-sm font-medium text-gray-700 mb-1">
+                    Travel Radius
+                  </label>
+                  <select
+                    id="travel-radius"
+                    value={travelRadiusKm}
+                    onChange={(e) => setTravelRadiusKm(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    {TRAVEL_RADIUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label htmlFor="experience-years" className="block text-sm font-medium text-gray-700 mb-1">
                     Years of Experience
@@ -1058,6 +1263,75 @@ export default function DashboardPage() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Areas Covered</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_LOCATIONS.map((area) => {
+                    const selected = areasCovered.includes(area)
+                    return (
+                      <button
+                        key={area}
+                        type="button"
+                        onClick={() => toggleAreaCovered(area)}
+                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                          selected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {area}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Languages</label>
+                <div className="flex flex-wrap gap-2">
+                  {LANGUAGE_OPTIONS.map((language) => {
+                    const selected = languages.includes(language)
+                    return (
+                      <button
+                        key={language}
+                        type="button"
+                        onClick={() => toggleLanguage(language)}
+                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                          selected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {language}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Age Groups</label>
+                <div className="flex flex-wrap gap-2">
+                  {AGE_GROUP_OPTIONS.map((ageGroup) => {
+                    const selected = ageGroups.includes(ageGroup)
+                    return (
+                      <button
+                        key={ageGroup}
+                        type="button"
+                        onClick={() => toggleAgeGroup(ageGroup)}
+                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                          selected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {ageGroup}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
                 <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
                   Bio
                 </label>
@@ -1069,6 +1343,50 @@ export default function DashboardPage() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   placeholder="Tell families about your teaching style and experience."
                 />
+              </div>
+
+              <div>
+                <label htmlFor="education" className="block text-sm font-medium text-gray-700 mb-1">
+                  Education
+                </label>
+                <select
+                  id="education"
+                  value={education}
+                  onChange={(e) => setEducation(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="">Select education level</option>
+                  {EDUCATION_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <label className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">I also offer online lessons</p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      Families will see an online badge on your card and can request online lessons.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOffersOnline((current) => !current)}
+                    aria-pressed={offersOnline}
+                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
+                      offersOnline ? 'bg-emerald-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                        offersOnline ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </label>
               </div>
 
               <div>
@@ -1163,6 +1481,18 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={hasTutorConsent}
+                  onChange={(event) => setHasTutorConsent(event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span>
+                  I confirm that my tutor profile details are accurate and that TutorConnect Gambia may use them for bookings, verification, and family matching.
+                </span>
+              </label>
+
               <div id="documents">
                 <h2 className="text-lg font-semibold text-gray-900">Verification Documents</h2>
                 <p className="text-sm text-gray-600 mt-1">
@@ -1210,7 +1540,7 @@ export default function DashboardPage() {
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Recent Inquiries</h2>
                   <p className="text-sm text-gray-600 mt-1">
-                    Families who contacted you from your public profile appear here.
+                    Legacy inquiries and platform contact records appear here.
                   </p>
                 </div>
                 {profileId && (
@@ -1236,7 +1566,7 @@ export default function DashboardPage() {
                   {inquiriesError}
                 </div>
               ) : inquiries.length === 0 ? (
-                <p className="text-gray-600">No inquiries yet. When families contact you, they will appear here.</p>
+                <p className="text-gray-600">No inquiries yet. New family communication now starts through bookings and platform actions.</p>
               ) : (
                 <div className="space-y-3">
                   {inquiries.map((inquiry) => (

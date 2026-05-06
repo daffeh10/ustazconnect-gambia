@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/useAuth'
 
 interface ReportModalProps {
   reportedUserId: string
@@ -18,12 +19,12 @@ const REPORT_REASONS = [
 
 export default function ReportModal({ reportedUserId, tutorName }: ReportModalProps) {
   const [supabase] = useState(() => createClient())
+  const { user, role, isLoading: isAuthLoading, openAuthModal } = useAuth()
 
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [reporterId, setReporterId] = useState('')
   const [reporterType, setReporterType] = useState('user')
   const [showModal, setShowModal] = useState(false)
+  const [pendingOpenAfterAuth, setPendingOpenAfterAuth] = useState(false)
   const [showToast, setShowToast] = useState(false)
   const [reason, setReason] = useState('')
   const [details, setDetails] = useState('')
@@ -35,42 +36,30 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
   useEffect(() => {
     let isMounted = true
 
-    async function loadUser() {
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
+    async function syncReportAuthState() {
+      if (isAuthLoading) return
 
-        if (userError) throw userError
+      try {
         if (!isMounted || !user) {
-          setIsLoggedIn(false)
           setReporterId('')
+          setReporterType('user')
           return
         }
 
-        const metadataRole =
-          typeof user.user_metadata?.role === 'string' && user.user_metadata.role.trim() !== ''
-            ? user.user_metadata.role.trim().toLowerCase()
-            : 'user'
+        const metadataRole = role === 'guest' ? 'user' : role
 
-        setIsLoggedIn(true)
         setReporterId(user.id)
         setReporterType(metadataRole)
       } catch (err) {
         console.error(err)
         if (isMounted) {
-          setIsLoggedIn(false)
           setReporterId('')
-        }
-      } finally {
-        if (isMounted) {
-          setIsCheckingAuth(false)
+          setReporterType('user')
         }
       }
     }
 
-    void loadUser()
+    void syncReportAuthState()
 
     return () => {
       isMounted = false
@@ -78,7 +67,14 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
         clearTimeout(toastTimerRef.current)
       }
     }
-  }, [supabase])
+  }, [isAuthLoading, role, supabase, user])
+
+  useEffect(() => {
+    if (!pendingOpenAfterAuth || !user) return
+
+    setShowModal(true)
+    setPendingOpenAfterAuth(false)
+  }, [pendingOpenAfterAuth, user])
 
   function closeModal() {
     if (isSubmitting) return
@@ -166,8 +162,14 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
     }
   }
 
-  if (isCheckingAuth || !isLoggedIn) {
-    return null
+  function handleOpen() {
+    if (!user) {
+      setPendingOpenAfterAuth(true)
+      openAuthModal()
+      return
+    }
+
+    setShowModal(true)
   }
 
   return (
@@ -175,7 +177,7 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
       <div className="mt-6 pt-4 border-t border-gray-100">
         <button
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={handleOpen}
           className="text-sm text-gray-500 hover:text-gray-700 hover:underline"
         >
           Report a problem

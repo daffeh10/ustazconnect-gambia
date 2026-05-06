@@ -1,6 +1,16 @@
 import Link from 'next/link'
 
-export default function PaymentFailedPage() {
+interface PaymentFailedPageProps {
+  searchParams?: Promise<{
+    bookingId?: string
+  }>
+}
+
+export default async function PaymentFailedPage({ searchParams }: PaymentFailedPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {}
+  const bookingId = typeof resolvedSearchParams.bookingId === 'string' ? resolvedSearchParams.bookingId : ''
+  const retryHref = bookingId ? `/payment/${bookingId}` : '/family/dashboard'
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 flex items-center justify-center">
       <div className="max-w-md w-full bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
@@ -13,16 +23,16 @@ export default function PaymentFailedPage() {
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/family/dashboard"
+            href={retryHref}
             className="inline-flex items-center rounded-lg bg-emerald-600 px-5 py-3 text-white font-medium hover:bg-emerald-700 transition-colors"
           >
-            Back to dashboard
+            Try again
           </Link>
           <Link
-            href="/find-ustaz"
+            href="/family/dashboard"
             className="inline-flex items-center rounded-lg border border-gray-300 px-5 py-3 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
           >
-            Browse tutors
+            Back to dashboard
           </Link>
         </div>
       </div>

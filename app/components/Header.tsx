@@ -1,100 +1,30 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/useAuth'
+import Avatar from './Avatar'
 
 export default function Header() {
   const router = useRouter()
+  const { user, profile, role, isLoading } = useAuth()
   const [supabase] = useState(() => createClient())
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const [dashboardHref, setDashboardHref] = useState('/dashboard')
-
-  useEffect(() => {
-    let isMounted = true
-
-    async function syncUserState(userId: string | null) {
-      if (!isMounted) return
-
-      if (!userId) {
-        setIsLoggedIn(false)
-        setDashboardHref('/dashboard')
-        return
-      }
-
-      setIsLoggedIn(true)
-
-      try {
-        const { data: adminProfile, error: adminError } = await supabase
-          .from('admin_users')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle()
-
-        if (adminError) throw adminError
-
-        if (!isMounted) return
-
-        if (adminProfile) {
-          setDashboardHref('/admin')
-          return
-        }
-
-        const { data: familyProfile, error: familyError } = await supabase
-          .from('family_profiles')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle()
-
-        if (familyError && familyError.code !== 'PGRST116' && familyError.code !== '42P01') {
-          throw familyError
-        }
-
-        if (!isMounted) return
-        setDashboardHref(familyProfile ? '/family/dashboard' : '/dashboard')
-      } catch (error) {
-        console.error('Failed to resolve header auth state', error)
-        if (isMounted) {
-          setDashboardHref('/dashboard')
-        }
-      }
-    }
-
-    // Check initial auth state on mount
-    async function checkUser() {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession()
-
-        if (error) throw error
-        await syncUserState(session?.user?.id ?? null)
-      } catch (authError) {
-        console.error('Failed to load current user in header', authError)
-        if (isMounted) {
-          setIsLoggedIn(false)
-          setDashboardHref('/dashboard')
-        }
-      }
-    }
-    void checkUser()
-
-    // Stay in sync when user logs in or out (including other tabs)
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      void syncUserState(session?.user?.id ?? null)
-    })
-
-    return () => {
-      isMounted = false
-      subscription.unsubscribe()
-    }
-  }, [supabase])
+  const isLoggedIn = Boolean(user)
+  const dashboardHref =
+    role === 'admin' ? '/admin' : role === 'family' ? '/family/dashboard' : '/dashboard'
+  const profileRecord = profile as Record<string, unknown> | null
+  const profileName =
+    typeof profileRecord?.name === 'string'
+      ? profileRecord.name
+      : typeof profileRecord?.parent_name === 'string'
+        ? profileRecord.parent_name
+        : user?.email || 'Account'
+  const profilePhotoUrl =
+    typeof profileRecord?.profile_photo_url === 'string' ? profileRecord.profile_photo_url : null
 
   async function handleSignOut() {
     setIsMenuOpen(false)
@@ -106,8 +36,6 @@ export default function Header() {
     } catch (error) {
       console.error('Header sign-out failed', error)
     } finally {
-      setIsLoggedIn(false)
-      setDashboardHref('/dashboard')
       setIsSigningOut(false)
       router.replace('/')
       router.refresh()
@@ -125,14 +53,17 @@ export default function Header() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex gap-4 items-center">
-            <Link href="/find-ustaz" className="text-gray-600 hover:text-emerald-700 transition">
+            <Link href="/find-tutor" className="text-gray-600 hover:text-emerald-700 transition">
               Find Tutor
             </Link>
 
-            {isLoggedIn ? (
+            {isLoading ? (
+              <div className="h-10 w-28 rounded-lg bg-gray-100 animate-pulse" />
+            ) : isLoggedIn ? (
               <>
-                <Link href={dashboardHref} className="text-gray-600 hover:text-emerald-700 transition">
-                  Dashboard
+                <Link href={dashboardHref} className="flex items-center gap-3 text-gray-600 hover:text-emerald-700 transition">
+                  <Avatar name={profileName} photoUrl={profilePhotoUrl} size="sm" />
+                  <span>Dashboard</span>
                 </Link>
                 <button
                   onClick={handleSignOut}
@@ -179,21 +110,24 @@ export default function Header() {
         {isMenuOpen && (
           <div className="md:hidden mt-4 pb-4 border-t border-gray-100 pt-4 space-y-3">
             <Link
-              href="/find-ustaz"
+              href="/find-tutor"
               className="block text-gray-600 hover:text-emerald-700 transition py-2"
               onClick={() => setIsMenuOpen(false)}
             >
               Find Tutor
             </Link>
 
-            {isLoggedIn ? (
+            {isLoading ? (
+              <div className="h-10 w-full rounded-lg bg-gray-100 animate-pulse" />
+            ) : isLoggedIn ? (
               <>
                 <Link
                   href={dashboardHref}
-                  className="block text-gray-600 hover:text-emerald-700 transition py-2"
+                  className="flex items-center gap-3 text-gray-600 hover:text-emerald-700 transition py-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  Dashboard
+                  <Avatar name={profileName} photoUrl={profilePhotoUrl} size="sm" />
+                  <span>Dashboard</span>
                 </Link>
                 <button
                   onClick={() => {

@@ -15,7 +15,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
-      url: `${baseUrl}/find-ustaz`,
+      url: `${baseUrl}/find-tutor`,
       changeFrequency: 'weekly',
       priority: 0.9,
     },
@@ -47,7 +47,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .eq('is_approved', true)
 
     const tutorRoutes: MetadataRoute.Sitemap = (tutors ?? []).map((tutor) => ({
-      url: `${baseUrl}/ustaz/${tutor.id}`,
+      url: `${baseUrl}/tutor/${tutor.id}`,
       changeFrequency: 'weekly',
       priority: 0.8,
     }))

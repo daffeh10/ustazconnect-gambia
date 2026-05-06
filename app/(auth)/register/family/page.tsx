@@ -2,11 +2,13 @@
 
 import Link from 'next/link'
 import { FormEvent, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { buildPublicUrl, getFriendlyRegistrationError, passwordMeetsRequirements } from '@/lib/auth'
 
 export default function RegisterFamilyPage() {
   const supabase = createClient()
-  const specialCharacterPattern = /[^A-Za-z0-9]/
+  const router = useRouter()
 
   const [parentName, setParentName] = useState('')
   const [email, setEmail] = useState('')
@@ -20,50 +22,20 @@ export default function RegisterFamilyPage() {
   const [resendMessage, setResendMessage] = useState('')
   const [error, setError] = useState('')
 
-  function getFriendlyAuthError(message: string) {
-    const lower = message.toLowerCase()
-
-    if (lower.includes('already registered') || lower.includes('already been registered')) {
-      return 'This email is already registered. Please sign in instead.'
-    }
-
-    if (
-      lower.includes('invalid email') ||
-      lower.includes('unable to validate email address') ||
-      lower.includes('email address is invalid')
-    ) {
-      return 'Please enter a valid email address.'
-    }
-
-    if (lower.includes('error sending confirmation email') || lower.includes('email rate limit exceeded')) {
-      return 'We could not send a confirmation email right now. Please try again in a few minutes.'
-    }
-
-    if (lower.includes('password')) {
-      return 'Password must be at least 8 characters long.'
-    }
-
-    return 'We could not create your account. Please check your details and try again.'
-  }
-
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     const trimmedName = parentName.trim()
     const trimmedEmail = email.trim()
+    const consentGivenAt = new Date().toISOString()
 
     if (!trimmedName || !trimmedEmail || !password || !confirmPassword) {
       setError('Please complete all fields before continuing.')
       return
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
-      return
-    }
-
-    if (!specialCharacterPattern.test(password)) {
-      setError('Password must include at least one special character.')
+    if (!passwordMeetsRequirements(password)) {
+      setError('Password must be at least 8 characters long and include 1 special character.')
       return
     }
 
@@ -86,16 +58,17 @@ export default function RegisterFamilyPage() {
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: buildPublicUrl('/login'),
           data: {
             role: 'family',
             full_name: trimmedName,
+            consent_given_at: consentGivenAt,
           },
         },
       })
 
       if (signUpError) {
-        setError(getFriendlyAuthError(signUpError.message))
+        setError(getFriendlyRegistrationError(signUpError.message))
         return
       }
 
@@ -113,17 +86,24 @@ export default function RegisterFamilyPage() {
       }
 
       if (data.session) {
+        // Email confirmation is disabled — user is already confirmed.
+        // Insert their profile row and redirect straight to the dashboard.
         const { error: insertError } = await supabase.from('family_profiles').insert({
           user_id: userId,
           parent_name: trimmedName,
           email: trimmedEmail,
+          consent_given_at: consentGivenAt,
         })
 
         if (insertError) {
           console.error('Family profile insert failed during signup:', insertError.message)
         }
+
+        router.push('/family/dashboard')
+        return
       }
 
+      // Email confirmation is enabled — ask the user to check their inbox.
       setSubmittedEmail(trimmedEmail)
       setIsSuccess(true)
     } catch (err) {
@@ -146,7 +126,7 @@ export default function RegisterFamilyPage() {
         type: 'signup',
         email: submittedEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: buildPublicUrl('/login'),
         },
       })
 
@@ -282,6 +262,9 @@ export default function RegisterFamilyPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h2>
             <p className="text-base text-gray-600">
               We sent a confirmation link to your inbox. Please verify your email to continue.
+            </p>
+            <p className="text-sm text-gray-500 mt-3">
+              If you do not see it within a few minutes, check spam or use the resend button below.
             </p>
             <button
               type="button"

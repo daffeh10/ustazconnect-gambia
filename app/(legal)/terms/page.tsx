@@ -8,7 +8,7 @@ export default function TermsPage() {
       </Link>
 
       <h1 className="text-3xl font-bold text-gray-900 mt-6 mb-1">Terms of Service</h1>
-      <p className="text-sm text-gray-400 mb-8">Last updated: March 2026</p>
+      <p className="text-sm text-gray-400 mb-8">Last updated: May 2026</p>
 
       <div className="text-base text-gray-700 leading-relaxed">
         <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">What TutorConnect Gambia Does</h2>
@@ -16,6 +16,13 @@ export default function TermsPage() {
           TutorConnect Gambia helps families and students find in-person tutors across The Gambia.
           We introduce tutors and learners, support bookings, and help manage trust and communication
           on the platform. We are not a school and we do not guarantee exam results.
+        </p>
+
+        <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Platform Fees</h2>
+        <p>
+          Families currently see a 3% service fee added to the tutor subtotal on platform bookings.
+          Tutors currently pay a 10% commission on lesson earnings processed through the platform.
+          Any fee shown during booking or payment checkout is the amount that applies to that transaction.
         </p>
 
         <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Rules for Tutors</h2>
@@ -38,6 +45,13 @@ export default function TermsPage() {
         <p>
           If there is a disagreement about attendance, conduct, or payments, contact us at
           info@tutorconnect.gm. We review the issue and aim to respond within 7 days.
+        </p>
+
+        <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Payments and Refunds</h2>
+        <p>
+          Booking totals, including any service fee, are shown before payment. If a payment issue,
+          no-show, or serious dispute happens, contact us promptly so we can review the case under
+          our refund and support process.
         </p>
 
         <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Suspension and Removal</h2>
