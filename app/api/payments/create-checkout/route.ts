@@ -24,6 +24,7 @@ interface ModemPayIntentResponse {
   payment_link?: string
   data?: {
     id?: string
+    payment_intent_id?: string
     intent_secret?: string
     payment_link?: string
   }
@@ -78,11 +79,12 @@ export async function POST(request: Request) {
       callback_url: `${siteUrl}/api/payments/webhook`,
     })) as ModemPayIntentResponse
 
-    const providerPaymentId = paymentIntent.payment_intent_id || paymentIntent.data?.id || ''
+    const providerPaymentId =
+      paymentIntent.payment_intent_id || paymentIntent.data?.id || paymentIntent.data?.payment_intent_id || ''
     const intentSecret = paymentIntent.intent_secret || paymentIntent.data?.intent_secret || ''
     const paymentLink = paymentIntent.payment_link || paymentIntent.data?.payment_link || ''
 
-    if (!providerPaymentId || !intentSecret || !paymentLink) {
+    if (!intentSecret || !paymentLink) {
       console.error('Unexpected ModemPay payment intent response', paymentIntent)
       throw new Error(paymentIntent.message || 'Could not create ModemPay checkout session.')
     }
@@ -96,7 +98,7 @@ export async function POST(request: Request) {
       payment_method: 'modempay',
       status: 'pending',
       intent_secret: intentSecret,
-      provider_payment_id: providerPaymentId,
+      provider_payment_id: providerPaymentId || null,
     })
 
     if (paymentInsertError) throw paymentInsertError
