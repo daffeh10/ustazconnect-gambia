@@ -31,6 +31,33 @@ interface TutorNameRow {
   name: string | null
 }
 
+function getPaymentStatusText(status: string | null) {
+  switch (status) {
+    case 'cancelled':
+      return 'Your last payment attempt was cancelled before completion.'
+    case 'failed':
+      return 'Your last payment attempt failed. You can try again now.'
+    case 'pending':
+      return 'Your payment is still processing. If you already completed checkout, wait a moment and refresh this page.'
+    case 'completed':
+      return 'Your payment has been completed successfully.'
+    default:
+      return 'No payment has been started for this booking yet.'
+  }
+}
+
+function getPaymentActionLabel(status: string | null) {
+  switch (status) {
+    case 'cancelled':
+    case 'failed':
+      return 'Try Payment Again'
+    case 'pending':
+      return 'Continue Payment'
+    default:
+      return 'Pay Now'
+  }
+}
+
 export default function FamilyDashboardPage() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
@@ -300,6 +327,7 @@ export default function FamilyDashboardPage() {
               {confirmedBookings.map((booking) => {
                 const tutorName = tutorNames[booking.tutor_id] || 'Tutor'
                 const latestPayment = latestPaymentsByBooking[booking.id]
+                const latestPaymentStatus = latestPayment?.status || null
 
                 return (
                   <article key={booking.id} className="border border-gray-200 rounded-xl p-5">
@@ -331,16 +359,20 @@ export default function FamilyDashboardPage() {
                     </div>
 
                     {latestPayment && (
-                      <p className="mt-3 text-sm text-gray-500">
-                        Latest payment status: <span className="font-medium capitalize">{latestPayment.status || 'pending'}</span>
-                      </p>
+                      <div className="mt-3 space-y-1 text-sm text-gray-500">
+                        <p>
+                          Latest payment status:{' '}
+                          <span className="font-medium capitalize">{latestPaymentStatus || 'pending'}</span>
+                        </p>
+                        <p>{getPaymentStatusText(latestPaymentStatus)}</p>
+                      </div>
                     )}
 
                     <Link
                       href={`/payment/${booking.id}`}
                       className="inline-flex mt-4 items-center rounded-lg bg-emerald-600 px-5 py-3 text-white font-medium hover:bg-emerald-700 transition-colors"
                     >
-                      Pay Now
+                      {getPaymentActionLabel(latestPaymentStatus)}
                     </Link>
                   </article>
                 )
