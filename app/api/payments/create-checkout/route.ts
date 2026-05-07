@@ -106,6 +106,13 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('create-checkout route failed', error)
-    return NextResponse.json({ error: 'Could not create payment session.' }, { status: 500 })
+
+    let message = 'Could not create payment session.'
+
+    if (error instanceof Error && error.message.trim()) {
+      message = error.message
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
