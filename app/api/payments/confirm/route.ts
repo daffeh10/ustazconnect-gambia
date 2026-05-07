@@ -1,0 +1,142 @@
+import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getModemPayClient } from '@/lib/payments'
+
+interface PaymentRow {
+  id: string
+  booking_id: string | null
+  family_id: string | null
+  status: string | null
+  provider_payment_id: string | null
+  wave_reference: string | null
+}
+
+interface BookingRow {
+  id: string
+  family_id: string | null
+  tutor_id: string
+  subjects: string[] | null
+  hours_per_month: number
+  status: string | null
+}
+
+interface RetrievedPaymentIntent {
+  id: string
+  status: 'initialized' | 'processing' | 'requires_payment_method' | 'successful' | 'failed' | 'cancelled'
+}
+
+async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminClient>, booking: BookingRow) {
+  const { count, error: lessonsCountError } = await supabase
+    .from('lessons')
+    .select('id', { count: 'exact', head: true })
+    .eq('booking_id', booking.id)
+
+  if (lessonsCountError) throw lessonsCountError
+  if (count) return
+
+  const totalLessons = Math.floor(booking.hours_per_month / 2)
+  const lessonRows = Array.from({ length: totalLessons }, (_, index) => ({
+    booking_id: booking.id,
+    tutor_id: booking.tutor_id,
+    family_id: booking.family_id,
+    lesson_number: index + 1,
+    subject: booking.subjects?.[0] || null,
+    status: 'scheduled',
+  }))
+
+  if (lessonRows.length === 0) return
+
+  const { error: lessonInsertError } = await supabase.from('lessons').insert(lessonRows)
+  if (lessonInsertError) throw lessonInsertError
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const bookingId = typeof body?.bookingId === 'string' ? body.bookingId.trim() : ''
+    const familyId = typeof body?.familyId === 'string' ? body.familyId.trim() : ''
+
+    if (!bookingId || !familyId) {
+      return NextResponse.json({ error: 'Missing booking confirmation details.' }, { status: 400 })
+    }
+
+    const supabase = createAdminClient()
+    const modemPay = getModemPayClient()
+
+    const { data: payment, error: paymentError } = await supabase
+      .from('payments')
+      .select('id,booking_id,family_id,status,provider_payment_id,wave_reference')
+      .eq('booking_id', bookingId)
+      .eq('family_id', familyId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle<PaymentRow>()
+
+    if (paymentError) throw paymentError
+    if (!payment?.provider_payment_id) {
+      return NextResponse.json({ status: 'missing_payment' })
+    }
+
+    const paymentIntent = (await modemPay.paymentIntents.retrieve(payment.provider_payment_id)) as RetrievedPaymentIntent
+
+    if (paymentIntent.status === 'successful') {
+      if (payment.status !== 'completed') {
+        const { error: paymentUpdateError } = await supabase
+          .from('payments')
+          .update({
+            status: 'completed',
+            wave_reference: payment.wave_reference || payment.provider_payment_id,
+            paid_at: new Date().toISOString(),
+          })
+          .eq('id', payment.id)
+
+        if (paymentUpdateError) throw paymentUpdateError
+      }
+
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select('id,family_id,tutor_id,subjects,hours_per_month,status')
+        .eq('id', bookingId)
+        .eq('family_id', familyId)
+        .maybeSingle<BookingRow>()
+
+      if (bookingError) throw bookingError
+      if (!booking) {
+        return NextResponse.json({ error: 'Booking record not found.' }, { status: 404 })
+      }
+
+      if (booking.status !== 'active') {
+        const { error: bookingUpdateError } = await supabase
+          .from('bookings')
+          .update({ status: 'active', updated_at: new Date().toISOString() })
+          .eq('id', booking.id)
+
+        if (bookingUpdateError) throw bookingUpdateError
+      }
+
+      await ensureLessonsForBooking(supabase, booking)
+      return NextResponse.json({ status: 'completed' })
+    }
+
+    if (paymentIntent.status === 'failed' || paymentIntent.status === 'cancelled') {
+      const nextStatus = paymentIntent.status === 'failed' ? 'failed' : 'cancelled'
+
+      const { error: paymentUpdateError } = await supabase
+        .from('payments')
+        .update({
+          status: nextStatus,
+          wave_reference: payment.wave_reference || payment.provider_payment_id,
+        })
+        .eq('id', payment.id)
+
+      if (paymentUpdateError) throw paymentUpdateError
+
+      return NextResponse.json({ status: nextStatus })
+    }
+
+    return NextResponse.json({ status: 'pending' })
+  } catch (error) {
+    console.error('payment confirm route failed', error)
+    return NextResponse.json({ error: 'Could not confirm payment status.' }, { status: 500 })
+  }
+}

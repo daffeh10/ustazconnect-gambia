@@ -37,6 +37,36 @@ export default function PaymentSuccessClient() {
         if (!user) throw new Error('You must be signed in to view this payment confirmation.')
 
         for (let attempt = 0; attempt < 10; attempt += 1) {
+          const confirmResponse = await fetch('/api/payments/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId, familyId: user.id }),
+          })
+
+          const confirmPayload = (await confirmResponse.json()) as {
+            status?: string
+            error?: string
+          }
+
+          if (!confirmResponse.ok) {
+            throw new Error(confirmPayload.error || 'Could not confirm payment status.')
+          }
+
+          if (confirmPayload.status === 'completed') {
+            if (isMounted) {
+              setConfirmationState('success')
+            }
+            return
+          }
+
+          if (confirmPayload.status === 'failed' || confirmPayload.status === 'cancelled') {
+            if (isMounted) {
+              setError('Your payment was not completed. Please try again.')
+              setConfirmationState('failed')
+            }
+            return
+          }
+
           const { data: paymentRow, error: paymentLoadError } = await supabase
             .from('payments')
             .select('status')
