@@ -15,8 +15,7 @@ export default function RegisterChooserPage() {
         <div className="mb-10 text-center">
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Become a Tutor on TutorConnect Gambia</h1>
           <p className="mx-auto mt-3 max-w-2xl text-base text-gray-600">
-            Tutor registration starts here. Families and students do not need to create an account first.
-            They can start by browsing tutors and will be asked to sign in only when they are ready to send a booking request.
+            Tutor registration starts here.
           </p>
         </div>
 

@@ -21,6 +21,27 @@ function buildRedirectUrl(request: NextRequest, pathname: string, errorCode?: st
   return redirectUrl
 }
 
+function buildRecoveryRedirectUrl(request: NextRequest, pathname: string, requestUrl: URL) {
+  const redirectUrl = new URL(pathname, request.url)
+  const code = requestUrl.searchParams.get('code')
+  const tokenHash = requestUrl.searchParams.get('token_hash')
+  const type = requestUrl.searchParams.get('type')
+
+  if (code) {
+    redirectUrl.searchParams.set('code', code)
+  }
+
+  if (tokenHash) {
+    redirectUrl.searchParams.set('token_hash', tokenHash)
+  }
+
+  if (type) {
+    redirectUrl.searchParams.set('type', type)
+  }
+
+  return redirectUrl
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
@@ -31,6 +52,10 @@ export async function GET(request: NextRequest) {
   const nextPath = getSafeNextPath(requestUrl.searchParams.get('next'), fallbackNext)
 
   try {
+    if (authType === 'recovery' && (code || tokenHash)) {
+      return NextResponse.redirect(buildRecoveryRedirectUrl(request, nextPath, requestUrl))
+    }
+
     const supabase = await createClient()
 
     if (code) {

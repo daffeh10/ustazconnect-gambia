@@ -32,6 +32,8 @@ export default function UpdatePasswordPage() {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
           if (exchangeError) throw exchangeError
           if (!isMounted) return
+          window.history.replaceState({}, document.title, window.location.pathname)
+          setError('')
           setHasRecoverySession(true)
           setIsReady(true)
           return
@@ -49,6 +51,8 @@ export default function UpdatePasswordPage() {
 
           if (sessionError) throw sessionError
           if (!isMounted) return
+          window.history.replaceState({}, document.title, window.location.pathname)
+          setError('')
           setHasRecoverySession(true)
           setIsReady(true)
           return
@@ -66,6 +70,7 @@ export default function UpdatePasswordPage() {
           if (verifyError) throw verifyError
           if (!isMounted) return
           window.history.replaceState({}, document.title, window.location.pathname)
+          setError('')
           setHasRecoverySession(true)
           setIsReady(true)
           return
@@ -77,7 +82,10 @@ export default function UpdatePasswordPage() {
         if (!isMounted) return
         const hasSession = Boolean(data.session)
         setHasRecoverySession(hasSession)
-        if (!hasSession) {
+        if (hasSession) {
+          window.history.replaceState({}, document.title, window.location.pathname)
+          setError('')
+        } else {
           if (errorCode === 'otp_expired') {
             setError('This reset link has already been used, expired, or replaced by a newer email. Please request a new one.')
           } else if (errorCode === 'invalid_link') {
