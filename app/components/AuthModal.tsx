@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import { useState } from 'react'
-import { buildPublicUrl, getFriendlyLoginError, getFriendlyRegistrationError } from '@/lib/auth'
+import { buildPublicUrl, getFriendlyLoginError, getFriendlyRegistrationError, passwordMeetsRequirements } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/client'
 
 type EmailMode = 'signIn' | 'signUp'
@@ -116,6 +116,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, returnTo }: Auth
       return
     }
 
+    if (emailMode === 'signUp' && !passwordMeetsRequirements(password)) {
+      setErrorMessage('Password must be at least 8 characters long.')
+      return
+    }
+
     if (emailMode === 'signUp' && !hasAcceptedLegal) {
       setErrorMessage('You must agree to the Terms of Service and Privacy Policy to continue.')
       return
@@ -141,7 +146,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, returnTo }: Auth
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: buildPublicUrl(getModalRedirectPath(returnTo)),
+          emailRedirectTo: buildPublicUrl(`/auth/callback?next=${encodeURIComponent(getModalRedirectPath(returnTo))}`),
           data: {
             role: 'family',
             consent_given_at: new Date().toISOString(),

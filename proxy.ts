@@ -6,9 +6,7 @@ function isProtectedUserRoute(pathname: string) {
     pathname === '/dashboard' ||
     pathname.startsWith('/dashboard/') ||
     pathname === '/family' ||
-    pathname.startsWith('/family/') ||
-    pathname === '/book' ||
-    pathname.startsWith('/book/')
+    pathname.startsWith('/family/')
   )
 }
 
@@ -120,5 +118,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/family/:path*', '/book/:path*', '/admin/:path*'],
+  matcher: ['/dashboard/:path*', '/family/:path*', '/admin/:path*'],
 }

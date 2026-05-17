@@ -13,14 +13,14 @@ export default function RegisterChooserPage() {
 
       <div className="mx-auto max-w-5xl">
         <div className="mb-10 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Join TutorConnect Gambia</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Become a Tutor on TutorConnect Gambia</h1>
           <p className="mx-auto mt-3 max-w-2xl text-base text-gray-600">
-            Choose how you want to get started. You can join as a tutor to offer lessons or as a
-            parent or student to find the right tutor.
+            Tutor registration starts here. Families and students do not need to create an account first.
+            They can start by browsing tutors and will be asked to sign in only when they are ready to send a booking request.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 md:gap-8">
+        <div className="grid gap-4 md:gap-8">
           <Link
             href="/register/tutor"
             className="block bg-white rounded-xl shadow-sm border border-gray-100 p-6 transition-shadow hover:shadow-md"
@@ -30,15 +30,18 @@ export default function RegisterChooserPage() {
               Share your knowledge and earn income.
             </p>
           </Link>
+        </div>
 
+        <div className="mt-8 rounded-xl border border-gray-200 bg-white p-6 text-center">
+          <h2 className="text-lg font-semibold text-gray-900">Looking for a tutor?</h2>
+          <p className="mt-2 text-base text-gray-600">
+            Start by browsing tutors. You can fill your booking request first, then create or sign in to your family account right before sending it.
+          </p>
           <Link
-            href="/register/family"
-            className="block bg-white rounded-xl shadow-sm border border-gray-100 p-6 transition-shadow hover:shadow-md"
+            href="/find-tutor"
+            className="inline-block mt-4 rounded-lg bg-emerald-600 px-6 py-3 font-medium text-white transition-colors hover:bg-emerald-700"
           >
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">I&apos;m a Parent/Student</h2>
-            <p className="text-base text-gray-600">
-              Find the perfect tutor.
-            </p>
+            Find a Tutor
           </Link>
         </div>
 

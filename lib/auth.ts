@@ -1,8 +1,6 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
-const PASSWORD_SPECIAL_CHARACTER_PATTERN = /[^A-Za-z0-9]/
-
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '')
 }
@@ -42,7 +40,7 @@ export function normalizeAuthActionType(value: string | null | undefined) {
 }
 
 export function passwordMeetsRequirements(password: string) {
-  return password.length >= 8 && PASSWORD_SPECIAL_CHARACTER_PATTERN.test(password)
+  return password.length >= 8
 }
 
 export function getFriendlyRegistrationError(message: string) {
@@ -68,7 +66,7 @@ export function getFriendlyRegistrationError(message: string) {
   }
 
   if (lower.includes('password')) {
-    return 'Password must be at least 8 characters long and include 1 special character.'
+    return 'Password must be at least 8 characters long.'
   }
 
   return 'We could not create your account. Please check your details and try again.'
@@ -93,6 +91,10 @@ export function getFriendlyLoginError(message: string) {
   const lower = message.toLowerCase()
   if (lower.includes('invalid login credentials')) {
     return 'Invalid email or password. Please try again.'
+  }
+
+  if (lower.includes('invalid refresh token') || lower.includes('refresh token not found')) {
+    return 'Your sign-in session has expired. Please sign in again.'
   }
 
   if (lower.includes('rate limit')) {

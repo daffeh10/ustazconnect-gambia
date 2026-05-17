@@ -73,7 +73,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
     } finally {
       setIsReviewsLoading(false)
     }
-  }, [id])
+  }, [id, supabase])
 
   useEffect(() => {
     async function fetchUstaz() {
@@ -97,7 +97,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
 
     void fetchUstaz()
     void loadReviews()
-  }, [id, loadReviews])
+  }, [id, loadReviews, supabase])
 
   useEffect(() => {
     if (!id || typeof window === 'undefined') return
@@ -389,10 +389,6 @@ export default function UstazProfileClient({ id }: { id: string }) {
                   Book This Tutor
                 </Link>
               )}
-            </div>
-
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700">
-              Tutor contact details stay private until your first lesson is booked through TutorConnect Gambia.
             </div>
 
             {ustaz.user_id && (

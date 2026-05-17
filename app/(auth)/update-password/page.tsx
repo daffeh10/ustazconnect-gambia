@@ -79,7 +79,9 @@ export default function UpdatePasswordPage() {
         setHasRecoverySession(hasSession)
         if (!hasSession) {
           if (errorCode === 'otp_expired') {
-            setError('This reset link has already been used or expired. Please request a new one.')
+            setError('This reset link has already been used, expired, or replaced by a newer email. Please request a new one.')
+          } else if (errorCode === 'invalid_link') {
+            setError('This reset link is incomplete or invalid. Please request a new one.')
           } else {
             setError('This reset link is invalid or expired. Please request a new one.')
           }
@@ -120,7 +122,7 @@ export default function UpdatePasswordPage() {
     }
 
     if (!passwordMeetsRequirements(password)) {
-      setError('Password must be at least 8 characters long and include 1 special character.')
+      setError('Password must be at least 8 characters long.')
       return
     }
 
@@ -176,7 +178,7 @@ export default function UpdatePasswordPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Minimum 8 characters and 1 special character"
+                  placeholder="Minimum 8 characters"
                   minLength={8}
                   required
                 />
@@ -205,7 +207,10 @@ export default function UpdatePasswordPage() {
               )}
 
               {!hasRecoverySession && (
-                <div className="text-center">
+                <div className="text-center space-y-2">
+                  <p className="text-sm text-gray-500">
+                    If you opened an older email or the link was already used, the safest fix is to request a fresh reset email now.
+                  </p>
                   <Link href="/forgot-password" className="text-sm text-emerald-700 hover:underline font-medium">
                     Request a new reset link
                   </Link>

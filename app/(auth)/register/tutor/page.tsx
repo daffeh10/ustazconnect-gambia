@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
@@ -21,6 +21,7 @@ import {
 export default function RegisterTutorPage() {
   const supabase = createClient()
   const router = useRouter()
+  const phoneInputRef = useRef<HTMLInputElement | null>(null)
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -42,6 +43,18 @@ export default function RegisterTutorPage() {
   const [isResending, setIsResending] = useState(false)
   const [resendMessage, setResendMessage] = useState('')
   const [error, setError] = useState('')
+  const [isPhoneFieldUnlocked, setIsPhoneFieldUnlocked] = useState(false)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (phoneInputRef.current?.value) {
+        phoneInputRef.current.value = ''
+      }
+      setPhone('')
+    }, 50)
+
+    return () => window.clearTimeout(timer)
+  }, [])
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -65,7 +78,7 @@ export default function RegisterTutorPage() {
     }
 
     if (!passwordMeetsRequirements(password)) {
-      setError('Password must be at least 8 characters long and include 1 special character.')
+      setError('Password must be at least 8 characters long.')
       return
     }
 
@@ -98,7 +111,7 @@ export default function RegisterTutorPage() {
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: buildPublicUrl('/login'),
+          emailRedirectTo: buildPublicUrl('/auth/callback?next=/login'),
           data: {
             role: 'tutor',
             full_name: trimmedName,
@@ -199,7 +212,7 @@ export default function RegisterTutorPage() {
         type: 'signup',
         email: submittedEmail,
         options: {
-          emailRedirectTo: buildPublicUrl('/login'),
+          emailRedirectTo: buildPublicUrl('/auth/callback?next=/login'),
         },
       })
 
@@ -261,7 +274,25 @@ export default function RegisterTutorPage() {
               Create your tutor account and complete your profile after signup.
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+              <input
+                type="text"
+                name="registration-username"
+                autoComplete="username"
+                tabIndex={-1}
+                aria-hidden="true"
+                className="sr-only"
+                defaultValue=""
+              />
+              <input
+                type="tel"
+                name="registration-phone-shadow"
+                autoComplete="tel"
+                tabIndex={-1}
+                aria-hidden="true"
+                className="sr-only"
+                defaultValue=""
+              />
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name
@@ -286,14 +317,22 @@ export default function RegisterTutorPage() {
                     +220
                   </span>
                   <input
+                    ref={phoneInputRef}
                     id="phone"
+                    name="new-phone-number"
                     type="tel"
                     inputMode="numeric"
                     value={phone}
                     onChange={(e) => setPhone(extractGambiaPhoneDigits(e.target.value))}
+                    onFocus={() => setIsPhoneFieldUnlocked(true)}
+                    onPointerDown={() => setIsPhoneFieldUnlocked(true)}
                     className="w-full rounded-r-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-                    placeholder="3825155"
+                    placeholder="7 digits after +220"
                     maxLength={7}
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    readOnly={!isPhoneFieldUnlocked}
                     required
                   />
                 </div>
@@ -330,12 +369,12 @@ export default function RegisterTutorPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Minimum 8 characters and 1 special character"
+                  placeholder="Minimum 8 characters"
                   minLength={8}
                   required
                 />
                 <p className="mt-1 text-sm text-gray-500">
-                  Use at least 8 characters and include 1 special character.
+                  Use at least 8 characters. A short passphrase is even better.
                 </p>
               </div>
 

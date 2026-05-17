@@ -87,14 +87,9 @@ export default function Home() {
           >
             Register as a Tutor
           </Link>
-          <div className="mt-4">
-            <Link
-              href="/register/family"
-              className="inline-block bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg border border-emerald-500 hover:bg-emerald-900 transition-colors"
-            >
-              Register as Family/Student
-            </Link>
-          </div>
+          <p className="mt-4 text-sm text-emerald-100">
+            Families and students can start by browsing tutors and only create an account when they are ready to send a booking request.
+          </p>
         </div>
       </section>
 

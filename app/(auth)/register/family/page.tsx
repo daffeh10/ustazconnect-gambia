@@ -35,7 +35,7 @@ export default function RegisterFamilyPage() {
     }
 
     if (!passwordMeetsRequirements(password)) {
-      setError('Password must be at least 8 characters long and include 1 special character.')
+      setError('Password must be at least 8 characters long.')
       return
     }
 
@@ -58,7 +58,7 @@ export default function RegisterFamilyPage() {
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: buildPublicUrl('/login'),
+          emailRedirectTo: buildPublicUrl('/auth/callback?next=/login'),
           data: {
             role: 'family',
             full_name: trimmedName,
@@ -126,7 +126,7 @@ export default function RegisterFamilyPage() {
         type: 'signup',
         email: submittedEmail,
         options: {
-          emailRedirectTo: buildPublicUrl('/login'),
+          emailRedirectTo: buildPublicUrl('/auth/callback?next=/login'),
         },
       })
 
@@ -197,12 +197,12 @@ export default function RegisterFamilyPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Minimum 8 characters and 1 special character"
+                  placeholder="Minimum 8 characters"
                   minLength={8}
                   required
                 />
                 <p className="mt-1 text-sm text-gray-500">
-                  Use at least 8 characters and include 1 special character.
+                  Use at least 8 characters. A short passphrase is even better.
                 </p>
               </div>
 

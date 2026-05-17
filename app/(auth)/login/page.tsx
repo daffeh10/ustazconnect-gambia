@@ -169,7 +169,7 @@ export default function LoginPage() {
         type: 'signup',
         email: trimmedEmail,
         options: {
-          emailRedirectTo: buildPublicUrl('/login'),
+          emailRedirectTo: buildPublicUrl('/auth/callback?next=/login'),
         },
       })
 

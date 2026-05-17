@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
 
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: buildPublicUrl('/update-password'),
+        redirectTo: buildPublicUrl('/auth/callback?next=/update-password'),
       })
 
       if (resetError) throw resetError
@@ -54,6 +54,9 @@ export default function ForgotPasswordPage() {
             <p className="text-base text-gray-600 mb-8">
               Enter your email and we will send you a password reset link.
             </p>
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Use the newest reset email only. Older reset links stop working as soon as a new one is sent.
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -91,6 +94,9 @@ export default function ForgotPasswordPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h2>
             <p className="text-base text-gray-600">
               If an account exists for this email, a password reset link has been sent.
+            </p>
+            <p className="text-sm text-gray-500 mt-3">
+              Open the newest email you receive. If a link has already expired or was used, just request another one.
             </p>
           </div>
         )}

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
 
@@ -17,22 +18,31 @@ interface TutorProfile {
   offers_online?: boolean | null
 }
 
-interface FamilyProfileRow {
-  parent_name: string | null
-}
-
 const HOURS_OPTIONS = [4, 8, 12, 16]
+const getBookingDraftKey = (tutorId: string) => `booking-draft:${tutorId}`
+
+interface BookingDraft {
+  selectedSubject: string
+  hoursPerMonth: number
+  preferredDays: string[]
+  familyName: string
+  familyPhone: string
+  specialRequests: string
+  lessonFormat: 'in_person' | 'online'
+}
 
 export default function BookTutorPage() {
   const params = useParams<{ tutorId: string }>()
   const tutorId = typeof params?.tutorId === 'string' ? params.tutorId : ''
   const [supabase] = useState(() => createClient())
+  const { user, role, profile, isLoading: isAuthLoading, openAuthModal } = useAuth()
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [error, setError] = useState('')
   const [authError, setAuthError] = useState('')
+  const [helperMessage, setHelperMessage] = useState('')
   const [tutor, setTutor] = useState<TutorProfile | null>(null)
   const [familyId, setFamilyId] = useState('')
   const [selectedSubject, setSelectedSubject] = useState('')
@@ -48,59 +58,6 @@ export default function BookTutorPage() {
 
     async function loadPage() {
       try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (userError) throw userError
-
-        if (!user) {
-          if (isMounted) {
-            setAuthError('Please sign in to book this tutor.')
-          }
-        } else {
-          const metadataRole =
-            typeof user.user_metadata?.role === 'string'
-              ? user.user_metadata.role.toLowerCase().trim()
-              : ''
-
-          let isFamilyUser = metadataRole === 'family'
-
-          const { data: familyProfile, error: familyProfileError } = await supabase
-            .from('family_profiles')
-            .select('parent_name')
-            .eq('user_id', user.id)
-            .maybeSingle<FamilyProfileRow>()
-
-          if (familyProfileError) {
-            const profileCode = familyProfileError.code?.toLowerCase() || ''
-            const profileMessage = familyProfileError.message.toLowerCase()
-            const missingTable =
-              profileCode === '42p01' ||
-              profileCode === 'pgrst205' ||
-              profileMessage.includes('does not exist')
-
-            if (!missingTable) throw familyProfileError
-          }
-
-          if (familyProfile) {
-            isFamilyUser = true
-          }
-
-          if (!isFamilyUser) {
-            if (isMounted) {
-              setAuthError('Only Family/Student accounts can book tutors.')
-            }
-          } else if (isMounted) {
-            setFamilyId(user.id)
-            const metadataName =
-              typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name.trim() : ''
-            const fallbackName = user.email?.split('@')[0] || 'Family'
-            setFamilyName(familyProfile?.parent_name || metadataName || fallbackName)
-          }
-        }
-
         const { data: tutorData, error: tutorError } = await supabase
           .from('tutor_profiles')
           .select('id,name,location,subjects,hourly_rate,available_days,profile_photo_url,offers_online')
@@ -140,6 +97,75 @@ export default function BookTutorPage() {
     }
   }, [supabase, tutorId])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !tutorId) return
+
+    const rawDraft = window.sessionStorage.getItem(getBookingDraftKey(tutorId))
+    if (!rawDraft) return
+
+    try {
+      const draft = JSON.parse(rawDraft) as Partial<BookingDraft>
+
+      if (typeof draft.selectedSubject === 'string') setSelectedSubject(draft.selectedSubject)
+      if (typeof draft.hoursPerMonth === 'number') setHoursPerMonth(draft.hoursPerMonth)
+      if (Array.isArray(draft.preferredDays)) setPreferredDays(draft.preferredDays.filter((item) => typeof item === 'string'))
+      if (typeof draft.familyName === 'string') setFamilyName(draft.familyName)
+      if (typeof draft.familyPhone === 'string') setFamilyPhone(draft.familyPhone)
+      if (typeof draft.specialRequests === 'string') setSpecialRequests(draft.specialRequests)
+      if (draft.lessonFormat === 'online' || draft.lessonFormat === 'in_person') setLessonFormat(draft.lessonFormat)
+    } catch (draftError) {
+      console.error('Failed to load booking draft', draftError)
+    }
+  }, [tutorId])
+
+  useEffect(() => {
+    if (!tutorId || typeof window === 'undefined') return
+
+    const draft: BookingDraft = {
+      selectedSubject,
+      hoursPerMonth,
+      preferredDays,
+      familyName,
+      familyPhone,
+      specialRequests,
+      lessonFormat,
+    }
+
+    window.sessionStorage.setItem(getBookingDraftKey(tutorId), JSON.stringify(draft))
+  }, [familyName, familyPhone, hoursPerMonth, lessonFormat, preferredDays, selectedSubject, specialRequests, tutorId])
+
+  useEffect(() => {
+    const profileRecord = profile as Record<string, unknown> | null
+
+    if (!user) {
+      setFamilyId('')
+      setAuthError('')
+      return
+    }
+
+    if (role !== 'family') {
+      setFamilyId('')
+      setAuthError('Only Family/Student accounts can send booking requests.')
+      return
+    }
+
+    setAuthError('')
+    setFamilyId(user.id)
+    setHelperMessage('You are signed in. Review your details below, then send your booking request.')
+
+    const profileName =
+      typeof profileRecord?.parent_name === 'string'
+        ? profileRecord.parent_name
+        : typeof user.user_metadata?.full_name === 'string'
+          ? user.user_metadata.full_name.trim()
+          : user.email?.split('@')[0] || 'Family'
+
+    const profilePhone = typeof profileRecord?.phone === 'string' ? profileRecord.phone : user.phone || ''
+
+    setFamilyName((current) => current.trim() || profileName)
+    setFamilyPhone((current) => current.trim() || profilePhone)
+  }, [profile, role, user])
+
   function togglePreferredDay(day: string) {
     setPreferredDays((prev) =>
       prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day]
@@ -148,11 +174,6 @@ export default function BookTutorPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
-    if (!familyId) {
-      setError('Please sign in as a Family/Student account before booking.')
-      return
-    }
 
     if (!tutor) {
       setError('Tutor details are missing. Please refresh and try again.')
@@ -166,6 +187,18 @@ export default function BookTutorPage() {
 
     if (!familyName.trim()) {
       setError('Please enter your name.')
+      return
+    }
+
+    if (!user || !familyId) {
+      setError('')
+      setHelperMessage('Please sign in or create your family account to send this request. Your booking details are saved on this page.')
+      openAuthModal(`/book/${tutorId}`)
+      return
+    }
+
+    if (role !== 'family') {
+      setError('Please sign in with a Family/Student account to send this request.')
       return
     }
 
@@ -213,6 +246,10 @@ export default function BookTutorPage() {
       }
 
       if (insertError) throw insertError
+
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(getBookingDraftKey(tutorId))
+      }
 
       setIsSuccess(true)
     } catch (err) {
@@ -265,12 +302,7 @@ export default function BookTutorPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mt-6 text-center">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Booking unavailable</h1>
             <p className="text-gray-600">{authError}</p>
-            <Link
-              href="/login"
-              className="inline-block mt-4 bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors"
-            >
-              Go to sign in
-            </Link>
+            <p className="text-sm text-gray-500 mt-4">Sign out and use a Family/Student account if you want to book this tutor.</p>
           </div>
         </div>
       </div>
@@ -298,6 +330,18 @@ export default function BookTutorPage() {
                   <p className="text-gray-600 mt-1">{tutor.location || 'Location not available'}</p>
                 </div>
               </div>
+
+              {!isAuthLoading && !user && (
+                <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  You can fill this booking request first. We will only ask you to sign in when you are ready to send it.
+                </div>
+              )}
+
+              {helperMessage && (
+                <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  {helperMessage}
+                </div>
+              )}
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
@@ -467,10 +511,14 @@ export default function BookTutorPage() {
 
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isAuthLoading}
                   className="w-full bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? 'Sending request...' : 'Send Booking Request'}
+                  {isSubmitting
+                    ? 'Sending request...'
+                    : !user
+                      ? 'Continue to Sign In'
+                      : 'Send Booking Request'}
                 </button>
               </form>
             </>

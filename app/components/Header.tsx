@@ -79,10 +79,10 @@ export default function Header() {
                   Sign In
                 </Link>
                 <Link
-                  href="/register"
+                  href="/register/tutor"
                   className="bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors"
                 >
-                  Join Free
+                  Become a Tutor
                 </Link>
               </>
             )}
@@ -149,11 +149,11 @@ export default function Header() {
                   Sign In
                 </Link>
                 <Link
-                  href="/register"
+                  href="/register/tutor"
                   className="block bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition text-center"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  Join Free
+                  Become a Tutor
                 </Link>
               </>
             )}
