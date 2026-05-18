@@ -87,9 +87,6 @@ export default function Home() {
           >
             Register as a Tutor
           </Link>
-          <p className="mt-4 text-sm text-emerald-100">
-            Families and students can start by browsing tutors and only create an account when they are ready to send a booking request.
-          </p>
         </div>
       </section>
 
