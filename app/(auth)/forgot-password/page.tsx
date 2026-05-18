@@ -96,7 +96,7 @@ export default function ForgotPasswordPage() {
               If an account exists for this email, a password reset link has been sent.
             </p>
             <p className="text-sm text-gray-500 mt-3">
-              Open the newest email you receive. If a link has already expired or was used, just request another one.
+              Open the newest email you receive. If Gmail groups reset emails together, expand the newest message in the thread before clicking the button.
             </p>
           </div>
         )}
