@@ -31,17 +31,7 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-4">Contact</h4>
             <p className="text-sm">
-              Email: info@tutorconnect.gm
-              <br />
-              WhatsApp:{' '}
-              <a
-                href="https://wa.me/220XXXXXXX"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition"
-              >
-                +220 XXX XXXX
-              </a>
+              Email: info@tutorconnectgambia.com
               <br />
               Location: Serrekunda, The Gambia
             </p>

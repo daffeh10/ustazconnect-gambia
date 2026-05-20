@@ -49,7 +49,7 @@ export default function PrivacyPage() {
 
         <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Account Deletion</h2>
         <p>
-          If you want your account removed, email info@tutorconnect.gm. We may keep limited records
+          If you want your account removed, email info@tutorconnectgambia.com. We may keep limited records
           when required for disputes, fraud prevention, or legal compliance.
         </p>
       </div>

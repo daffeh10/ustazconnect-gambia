@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 function getBaseUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://tutorconnect.gm').replace(/\/$/, '')
+  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://tutorconnectgambia.com').replace(/\/$/, '')
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

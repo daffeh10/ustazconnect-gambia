@@ -22,7 +22,7 @@ import {
 } from '@/lib/tutor-profile'
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const COMMISSION_RATE = 10
+const COMMISSION_RATE = 5
 const DEFAULT_LESSON_MINUTES = 120
 
 interface TutorProfileRow {
