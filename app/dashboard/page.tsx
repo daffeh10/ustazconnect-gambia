@@ -13,6 +13,7 @@ import {
   EDUCATION_OPTIONS,
   extractGambiaPhoneDigits,
   formatGambiaPhoneFromDigits,
+  GENDER_OPTIONS,
   isMissingEnhancedTutorProfileColumnError,
   isValidGambiaPhoneDigits,
   LANGUAGE_OPTIONS,
@@ -31,6 +32,7 @@ interface TutorProfileRow {
   name: string | null
   email: string | null
   phone: string | null
+  gender?: string | null
   location: string | null
   subjects: string[] | null
   experience_years: number | null
@@ -131,6 +133,7 @@ export default function DashboardPage() {
   const [email, setEmail] = useState('')
 
   const [name, setName] = useState('')
+  const [gender, setGender] = useState('')
   const [phone, setPhone] = useState('')
   const [storedPhoneDigits, setStoredPhoneDigits] = useState('')
   const [location, setLocation] = useState('')
@@ -396,6 +399,7 @@ export default function DashboardPage() {
           const normalizedStoredPhone = extractGambiaPhoneDigits(profile.phone)
           setProfileId(profile.id)
           setName(profile.name || '')
+          setGender(profile.gender || '')
           setStoredPhoneDigits(normalizedStoredPhone)
           setPhone('')
           setLocation(profile.location || '')
@@ -425,6 +429,8 @@ export default function DashboardPage() {
             typeof metadata.full_name === 'string' ? metadata.full_name : ''
           const fallbackPhone =
             typeof metadata.phone === 'string' ? extractGambiaPhoneDigits(metadata.phone) : ''
+          const fallbackGender =
+            typeof metadata.gender === 'string' ? metadata.gender : ''
           const fallbackSubjects = Array.isArray(metadata.selected_subjects)
             ? metadata.selected_subjects.filter((item): item is string => typeof item === 'string')
             : []
@@ -435,6 +441,7 @@ export default function DashboardPage() {
           setIsApproved(false)
           setOffersOnline(Boolean(metadata.offers_online))
           setName(fallbackName)
+          setGender(fallbackGender)
           setStoredPhoneDigits(fallbackPhone)
           setPhone('')
           setTravelRadiusKm(typeof metadata.travel_radius_km === 'number' ? String(metadata.travel_radius_km) : '5')
@@ -547,6 +554,11 @@ export default function DashboardPage() {
       return
     }
 
+    if (!gender) {
+      setError('Please select your gender before saving.')
+      return
+    }
+
     const phoneDigitsToSave = sanitizeGambiaPhoneDigits(phone) || storedPhoneDigits
 
     if (!isValidGambiaPhoneDigits(phoneDigitsToSave)) {
@@ -589,6 +601,7 @@ export default function DashboardPage() {
         name: name.trim(),
         email,
         phone: formatGambiaPhoneFromDigits(phoneDigitsToSave) || null,
+        gender,
         location: location || null,
         subjects,
         experience_years: experienceValue,
@@ -1162,6 +1175,25 @@ export default function DashboardPage() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   placeholder="Enter your full name"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
+                  Gender
+                </label>
+                <select
+                  id="gender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="">Select gender</option>
+                  {GENDER_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

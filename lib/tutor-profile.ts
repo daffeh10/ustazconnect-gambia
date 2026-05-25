@@ -15,6 +15,11 @@ export const AGE_GROUP_OPTIONS = [
   'Adults 18+',
 ] as const
 
+export const GENDER_OPTIONS = [
+  'Male',
+  'Female',
+] as const
+
 export const EDUCATION_OPTIONS = [
   'Secondary',
   'Diploma',
@@ -42,7 +47,8 @@ ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS travel_radius_km integer DEF
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS languages text[] DEFAULT '{English}';
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS age_groups text[] DEFAULT '{}';
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS education text DEFAULT '';
-ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS consent_given_at timestamptz;`
+ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS consent_given_at timestamptz;
+ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS gender text DEFAULT '';`
 
 export function sanitizeGambiaPhoneDigits(value: string) {
   const digitsOnly = value.replace(/\D/g, '')
@@ -77,6 +83,7 @@ export function isMissingEnhancedTutorProfileColumnError(message: string) {
     'age_groups',
     'education',
     'consent_given_at',
+    'gender',
     'offers_online',
     'available_days',
     'available_times',

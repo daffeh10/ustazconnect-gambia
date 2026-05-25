@@ -128,6 +128,21 @@ function getTutorSubjectsFromMetadata(user: User) {
   return metadataSubjects.filter((subject): subject is string => typeof subject === 'string' && subject.trim().length > 0)
 }
 
+function getTutorMetadataString(user: User, key: string) {
+  const value = user.user_metadata?.[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function getTutorMetadataNumber(user: User, key: string) {
+  const value = user.user_metadata?.[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 function isMissingSchemaError(error: { code?: string | null; message?: string | null } | null) {
   const code = error?.code?.toLowerCase() || ''
   const message = error?.message?.toLowerCase() || ''
@@ -197,11 +212,23 @@ export async function ensureProfileForUser(supabase: SupabaseClient, user: User)
 
     if (!data) {
       const tutorSubjects = getTutorSubjectsFromMetadata(user)
+      const tutorPhone = getTutorMetadataString(user, 'phone')
+      const tutorLocation = getTutorMetadataString(user, 'location')
+      const tutorGender = getTutorMetadataString(user, 'gender')
+      const tutorHourlyRate = getTutorMetadataNumber(user, 'hourly_rate')
+      const tutorExperienceYears = getTutorMetadataNumber(user, 'experience_years')
+      const tutorConsentGivenAt = getTutorMetadataString(user, 'consent_given_at')
       const { error: insertError } = await supabase.from('tutor_profiles').insert({
         user_id: user.id,
         name: displayName,
         email,
+        phone: tutorPhone || null,
+        gender: tutorGender || null,
+        location: tutorLocation || null,
         subjects: tutorSubjects,
+        hourly_rate: tutorHourlyRate ?? 0,
+        experience_years: tutorExperienceYears ?? 0,
+        consent_given_at: tutorConsentGivenAt || null,
         is_active: true,
         is_approved: false,
       })

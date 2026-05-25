@@ -11,6 +11,7 @@ import {
   EDUCATION_OPTIONS,
   extractGambiaPhoneDigits,
   formatGambiaPhoneFromDigits,
+  GENDER_OPTIONS,
   isMissingEnhancedTutorProfileColumnError,
   isValidGambiaPhoneDigits,
   LANGUAGE_OPTIONS,
@@ -24,10 +25,13 @@ export default function RegisterTutorPage() {
   const phoneInputRef = useRef<HTMLInputElement | null>(null)
 
   const [name, setName] = useState('')
+  const [gender, setGender] = useState('')
   const [phone, setPhone] = useState('')
+  const [location, setLocation] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [hourlyRate, setHourlyRate] = useState('')
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([])
   const [travelRadiusKm, setTravelRadiusKm] = useState('5')
   const [areasCovered, setAreasCovered] = useState<string[]>([])
@@ -65,9 +69,10 @@ export default function RegisterTutorPage() {
     const formattedPhone = formatGambiaPhoneFromDigits(sanitizedPhone)
     const parsedExperienceYears = experienceYears.trim() === '' ? 0 : Number(experienceYears)
     const parsedTravelRadiusKm = Number(travelRadiusKm) || 5
+    const parsedHourlyRate = Number(hourlyRate)
     const consentGivenAt = new Date().toISOString()
 
-    if (!trimmedName || !trimmedEmail || !password || !confirmPassword) {
+    if (!trimmedName || !gender || !location || !trimmedEmail || !password || !confirmPassword || !hourlyRate.trim()) {
       setError('Please complete all fields before continuing.')
       return
     }
@@ -89,6 +94,11 @@ export default function RegisterTutorPage() {
 
     if (selectedSubjects.length === 0) {
       setError('Please select at least one subject you can teach.')
+      return
+    }
+
+    if (Number.isNaN(parsedHourlyRate) || parsedHourlyRate <= 0) {
+      setError('Please enter a valid hourly rate greater than 0.')
       return
     }
 
@@ -116,6 +126,9 @@ export default function RegisterTutorPage() {
             role: 'tutor',
             full_name: trimmedName,
             phone: formattedPhone,
+            gender,
+            location,
+            hourly_rate: parsedHourlyRate,
             selected_subjects: selectedSubjects,
             travel_radius_km: parsedTravelRadiusKm,
             areas_covered: areasCovered,
@@ -155,8 +168,11 @@ export default function RegisterTutorPage() {
           name: trimmedName,
           email: trimmedEmail,
           phone: formattedPhone,
+          gender,
+          location,
           subjects: selectedSubjects,
           experience_years: parsedExperienceYears,
+          hourly_rate: parsedHourlyRate,
           is_active: true,
           is_approved: false,
         }
@@ -295,7 +311,7 @@ export default function RegisterTutorPage() {
               />
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Full Name
+                  Full Name *
                 </label>
                 <input
                   id="name"
@@ -303,14 +319,37 @@ export default function RegisterTutorPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Enter your full name"
+                  placeholder="First and last name as shown on your ID"
                   required
                 />
+                <p className="mt-1 text-sm text-gray-500">
+                  Use your first and last name exactly as they appear on your ID document.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
+                  Gender *
+                </label>
+                <select
+                  id="gender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  required
+                >
+                  <option value="">Select gender</option>
+                  {GENDER_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
+                  Phone Number *
                 </label>
                 <div className="flex">
                   <span className="inline-flex items-center rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-4 text-gray-600">
@@ -339,6 +378,45 @@ export default function RegisterTutorPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   This is your main tutor contact number. Families only get it after the first lesson is booked.
                 </p>
+              </div>
+
+              <div>
+                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+                  Location / Area *
+                </label>
+                <select
+                  id="location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  required
+                >
+                  <option value="">Select the main area where you teach</option>
+                  {ALL_LOCATIONS.map((area) => (
+                    <option key={area} value={area}>
+                      {area}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-sm text-gray-500">
+                  We collect your main teaching area, not your exact home address, to protect your privacy.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="hourly-rate" className="block text-sm font-medium text-gray-700 mb-1">
+                  Hourly Rate (Dalasi) *
+                </label>
+                <input
+                  id="hourly-rate"
+                  type="number"
+                  min="1"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  placeholder="e.g. 500"
+                  required
+                />
               </div>
 
               <div>
@@ -621,7 +699,7 @@ export default function RegisterTutorPage() {
               We sent a confirmation link to your inbox. Please verify your email to continue.
             </p>
             <p className="text-sm text-gray-500 mt-3">
-              If you do not see it within a few minutes, check spam or use the resend button below.
+              If you do not see it within a few minutes, check spam or use the resend button below. After signup, upload your ID and qualification documents in the dashboard so we can review and approve your profile.
             </p>
             <button
               type="button"
