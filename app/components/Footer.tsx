@@ -31,7 +31,7 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-4">Contact</h4>
             <p className="text-sm">
-              Email: info@tutorconnectgambia.com
+              Email: tutorconnectgambia@gmail.com
               <br />
               Location: Serrekunda, The Gambia
             </p>

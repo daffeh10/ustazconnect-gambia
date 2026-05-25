@@ -26,6 +26,19 @@ function formatMoney(value: number) {
   return `D${value.toLocaleString()}`
 }
 
+function getPaymentTitle(status: string | null) {
+  if (status === 'active') return 'Payment Complete'
+  return 'Complete Payment'
+}
+
+function getPaymentIntro(status: string | null) {
+  if (status === 'active') {
+    return 'This booking has already been paid for. You can now manage it from your family dashboard.'
+  }
+
+  return 'Pay securely with ModemPay. After checkout, you will be returned here automatically so TutorConnect can confirm your booking.'
+}
+
 export default function PaymentPage() {
   const params = useParams<{ bookingId: string }>()
   const bookingId = typeof params?.bookingId === 'string' ? params.bookingId : ''
@@ -160,10 +173,8 @@ export default function PaymentPage() {
         </Link>
 
         <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-md mx-auto mt-6">
-          <h1 className="text-2xl font-bold text-gray-900">Complete Payment</h1>
-          <p className="text-sm text-gray-600 mt-2">
-            Pay securely with ModemPay. Families can use Mobile Money or cards to complete this booking.
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{getPaymentTitle(booking.status)}</h1>
+          <p className="text-sm text-gray-600 mt-2">{getPaymentIntro(booking.status)}</p>
 
           <div className="mt-6 space-y-3 text-sm text-gray-700">
             <p className="flex justify-between gap-4">
@@ -187,12 +198,24 @@ export default function PaymentPage() {
               <span className="font-medium">{formatMoney(booking.service_fee)}</span>
             </p>
             <p className="flex justify-between gap-4 border-t border-gray-200 pt-3 text-base font-semibold text-gray-900">
-              <span>Total</span>
+              <span>TutorConnect total</span>
               <span>{formatMoney(booking.grand_total)}</span>
             </p>
           </div>
 
-          {booking.status !== 'confirmed' && (
+          {booking.status === 'confirmed' && (
+            <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm">
+              You are about to open secure ModemPay checkout. Once payment is completed, your booking will become active and your lesson plan will be created automatically.
+            </div>
+          )}
+
+          {booking.status === 'active' && (
+            <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm">
+              Payment has already been confirmed for this booking.
+            </div>
+          )}
+
+          {booking.status !== 'confirmed' && booking.status !== 'active' && (
             <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 text-sm">
               This booking is currently marked as <span className="font-medium">{booking.status || 'unknown'}</span>. Only confirmed bookings can be paid.
             </div>
@@ -204,17 +227,26 @@ export default function PaymentPage() {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handlePayment}
-            disabled={isSubmitting || booking.status !== 'confirmed'}
-            className="mt-6 w-full bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? 'Starting payment...' : `Pay ${formatMoney(booking.grand_total)} with ModemPay`}
-          </button>
+          {booking.status === 'active' ? (
+            <Link
+              href="/family/dashboard"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-6 py-3 text-white font-medium hover:bg-emerald-700 transition-colors"
+            >
+              Go to my dashboard
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handlePayment}
+              disabled={isSubmitting || booking.status !== 'confirmed'}
+              className="mt-6 w-full bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? 'Opening secure checkout...' : `Pay ${formatMoney(booking.grand_total)} with ModemPay`}
+            </button>
+          )}
 
           <p className="mt-4 text-xs text-gray-500 text-center">
-            Powered by ModemPay. Test checkout can accept providers like AfriMoney, QMoney, Wave, and cards depending on account setup.
+            Powered by ModemPay. In test mode, checkout may offer providers like AfriMoney, QMoney, Wave, and cards depending on account setup.
           </p>
         </div>
       </div>

@@ -12,6 +12,7 @@ export default function PaymentSuccessClient() {
   const [supabase] = useState(() => createClient())
   const [confirmationState, setConfirmationState] = useState<ConfirmationState>('checking')
   const [error, setError] = useState('')
+  const [isRetrying, setIsRetrying] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -125,6 +126,58 @@ export default function PaymentSuccessClient() {
     }
   }, [searchParams, supabase])
 
+  async function handleRetryConfirmation() {
+    setIsRetrying(true)
+    setConfirmationState('checking')
+    setError('')
+
+    try {
+      const bookingId = searchParams.get('bookingId') || ''
+      if (!bookingId) {
+        throw new Error('Missing booking details for payment confirmation.')
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError) throw userError
+      if (!user) throw new Error('You must be signed in to confirm this payment.')
+
+      const response = await fetch('/api/payments/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, familyId: user.id }),
+      })
+
+      const payload = (await response.json()) as { status?: string; error?: string }
+      if (!response.ok) {
+        throw new Error(payload.error || 'Could not confirm payment status.')
+      }
+
+      if (payload.status === 'completed') {
+        setConfirmationState('success')
+        return
+      }
+
+      if (payload.status === 'failed' || payload.status === 'cancelled') {
+        setError('Your payment was not completed. Please try again from your family dashboard.')
+        setConfirmationState('failed')
+        return
+      }
+
+      setError('Your payment is still being confirmed. Please check your family dashboard in a moment.')
+      setConfirmationState('pending')
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Could not confirm your payment.')
+      setConfirmationState('failed')
+    } finally {
+      setIsRetrying(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 flex items-center justify-center">
       <div className="max-w-md w-full bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
@@ -141,12 +194,22 @@ export default function PaymentSuccessClient() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Payment confirmation failed</h1>
             <p className="text-gray-600 mt-2">{error}</p>
-            <Link
-              href="/family/dashboard"
-              className="inline-flex mt-6 items-center rounded-lg bg-emerald-600 px-5 py-3 text-white font-medium hover:bg-emerald-700 transition-colors"
-            >
-              Back to dashboard
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/family/dashboard"
+                className="inline-flex items-center rounded-lg bg-emerald-600 px-5 py-3 text-white font-medium hover:bg-emerald-700 transition-colors"
+              >
+                Back to dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={handleRetryConfirmation}
+                disabled={isRetrying}
+                className="inline-flex items-center rounded-lg border border-gray-300 px-5 py-3 text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRetrying ? 'Checking again...' : 'Check again now'}
+              </button>
+            </div>
           </>
         ) : confirmationState === 'pending' ? (
           <>
@@ -155,12 +218,22 @@ export default function PaymentSuccessClient() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Payment still processing</h1>
             <p className="text-gray-600 mt-2">{error}</p>
-            <Link
-              href="/family/dashboard"
-              className="inline-flex mt-6 items-center rounded-lg bg-emerald-600 px-5 py-3 text-white font-medium hover:bg-emerald-700 transition-colors"
-            >
-              Check my dashboard
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleRetryConfirmation}
+                disabled={isRetrying}
+                className="inline-flex items-center rounded-lg bg-emerald-600 px-5 py-3 text-white font-medium hover:bg-emerald-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRetrying ? 'Checking again...' : 'Check again now'}
+              </button>
+              <Link
+                href="/family/dashboard"
+                className="inline-flex items-center rounded-lg border border-gray-300 px-5 py-3 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              >
+                Go to dashboard
+              </Link>
+            </div>
           </>
         ) : (
           <>

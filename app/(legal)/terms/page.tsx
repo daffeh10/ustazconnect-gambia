@@ -44,7 +44,7 @@ export default function TermsPage() {
         <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Disputes</h2>
         <p>
           If there is a disagreement about attendance, conduct, or payments, contact us at
-          info@tutorconnectgambia.com. We review the issue and aim to respond within 7 days.
+          tutorconnectgambia@gmail.com. We review the issue and aim to respond within 7 days.
         </p>
 
         <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">Payments and Refunds</h2>

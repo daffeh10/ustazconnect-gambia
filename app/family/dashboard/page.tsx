@@ -34,15 +34,30 @@ interface TutorNameRow {
 function getPaymentStatusText(status: string | null) {
   switch (status) {
     case 'cancelled':
-      return 'Your last payment attempt was cancelled before completion.'
+      return 'Your last payment attempt was cancelled before completion. You can safely start a new payment attempt now.'
     case 'failed':
-      return 'Your last payment attempt failed. You can try again now.'
+      return 'Your last payment attempt failed. Please start a new payment attempt.'
     case 'pending':
-      return 'Your payment is still processing. If you already completed checkout, wait a moment and refresh this page.'
+      return 'Your payment is still being confirmed. If you already completed checkout, give it a moment, then refresh this page.'
     case 'completed':
       return 'Your payment has been completed successfully.'
     default:
       return 'No payment has been started for this booking yet.'
+  }
+}
+
+function getPaymentStatusLabel(status: string | null) {
+  switch (status) {
+    case 'cancelled':
+      return 'Cancelled'
+    case 'failed':
+      return 'Failed'
+    case 'pending':
+      return 'Pending'
+    case 'completed':
+      return 'Completed'
+    default:
+      return 'Not started'
   }
 }
 
@@ -362,7 +377,7 @@ export default function FamilyDashboardPage() {
                       <div className="mt-3 space-y-1 text-sm text-gray-500">
                         <p>
                           Latest payment status:{' '}
-                          <span className="font-medium capitalize">{latestPaymentStatus || 'pending'}</span>
+                          <span className="font-medium">{getPaymentStatusLabel(latestPaymentStatus)}</span>
                         </p>
                         <p>{getPaymentStatusText(latestPaymentStatus)}</p>
                       </div>

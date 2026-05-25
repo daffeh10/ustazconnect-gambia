@@ -143,6 +143,13 @@ function getTutorMetadataNumber(user: User, key: string) {
   return null
 }
 
+function getTutorMetadataStringArray(user: User, key: string) {
+  const value = user.user_metadata?.[key]
+  if (!Array.isArray(value)) return [] as string[]
+
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
 function isMissingSchemaError(error: { code?: string | null; message?: string | null } | null) {
   const code = error?.code?.toLowerCase() || ''
   const message = error?.message?.toLowerCase() || ''
@@ -215,6 +222,7 @@ export async function ensureProfileForUser(supabase: SupabaseClient, user: User)
       const tutorPhone = getTutorMetadataString(user, 'phone')
       const tutorLocation = getTutorMetadataString(user, 'location')
       const tutorGender = getTutorMetadataString(user, 'gender')
+      const tutorLanguages = getTutorMetadataStringArray(user, 'languages')
       const tutorHourlyRate = getTutorMetadataNumber(user, 'hourly_rate')
       const tutorExperienceYears = getTutorMetadataNumber(user, 'experience_years')
       const tutorConsentGivenAt = getTutorMetadataString(user, 'consent_given_at')
@@ -226,6 +234,7 @@ export async function ensureProfileForUser(supabase: SupabaseClient, user: User)
         gender: tutorGender || null,
         location: tutorLocation || null,
         subjects: tutorSubjects,
+        languages: tutorLanguages,
         hourly_rate: tutorHourlyRate ?? 0,
         experience_years: tutorExperienceYears ?? 0,
         consent_given_at: tutorConsentGivenAt || null,

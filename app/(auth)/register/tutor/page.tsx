@@ -35,7 +35,7 @@ export default function RegisterTutorPage() {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([])
   const [travelRadiusKm, setTravelRadiusKm] = useState('5')
   const [areasCovered, setAreasCovered] = useState<string[]>([])
-  const [languages, setLanguages] = useState<string[]>(['English'])
+  const [languages, setLanguages] = useState<string[]>([])
   const [ageGroups, setAgeGroups] = useState<string[]>([])
   const [education, setEducation] = useState('')
   const [experienceYears, setExperienceYears] = useState('')
@@ -94,6 +94,11 @@ export default function RegisterTutorPage() {
 
     if (selectedSubjects.length === 0) {
       setError('Please select at least one subject you can teach.')
+      return
+    }
+
+    if (languages.length === 0) {
+      setError('Please select at least one language you can teach or communicate in.')
       return
     }
 
@@ -414,7 +419,7 @@ export default function RegisterTutorPage() {
                   value={hourlyRate}
                   onChange={(e) => setHourlyRate(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="e.g. 500"
+                  placeholder="e.g. 150"
                   required
                 />
               </div>
@@ -517,7 +522,7 @@ export default function RegisterTutorPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Languages</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Languages You Can Teach / Communicate In *</label>
                 <div className="flex flex-wrap gap-2">
                   {LANGUAGE_OPTIONS.map((language) => {
                     const isSelected = languages.includes(language)
@@ -537,6 +542,10 @@ export default function RegisterTutorPage() {
                     )
                   })}
                 </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  The site stays in English, but you should select the real languages you personally use with students,
+                  such as Arabic, Wolof, Mandinka, or English.
+                </p>
               </div>
 
               <div>

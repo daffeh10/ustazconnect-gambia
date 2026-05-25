@@ -44,7 +44,7 @@ const GAMBIA_LOCAL_DIGIT_COUNT = 7
 
 export const TUTOR_PROFILE_TASK_2_3_SQL = `ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS areas_covered text[] DEFAULT '{}';
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS travel_radius_km integer DEFAULT 5;
-ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS languages text[] DEFAULT '{English}';
+ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS languages text[] DEFAULT '{}';
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS age_groups text[] DEFAULT '{}';
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS education text DEFAULT '';
 ALTER TABLE tutor_profiles ADD COLUMN IF NOT EXISTS consent_given_at timestamptz;

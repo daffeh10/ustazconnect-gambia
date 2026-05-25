@@ -139,7 +139,7 @@ export default function DashboardPage() {
   const [location, setLocation] = useState('')
   const [travelRadiusKm, setTravelRadiusKm] = useState('5')
   const [areasCovered, setAreasCovered] = useState<string[]>([])
-  const [languages, setLanguages] = useState<string[]>(['English'])
+  const [languages, setLanguages] = useState<string[]>([])
   const [ageGroups, setAgeGroups] = useState<string[]>([])
   const [education, setEducation] = useState('')
   const [experienceYears, setExperienceYears] = useState('')
@@ -405,7 +405,7 @@ export default function DashboardPage() {
           setLocation(profile.location || '')
           setTravelRadiusKm(profile.travel_radius_km != null ? String(profile.travel_radius_km) : '5')
           setAreasCovered(normalizeStringArray(profile.areas_covered))
-          setLanguages(normalizeStringArray(profile.languages).length > 0 ? normalizeStringArray(profile.languages) : ['English'])
+          setLanguages(normalizeStringArray(profile.languages))
           setAgeGroups(normalizeStringArray(profile.age_groups))
           setEducation(profile.education || '')
           setExperienceYears(profile.experience_years != null ? String(profile.experience_years) : '')
@@ -446,7 +446,7 @@ export default function DashboardPage() {
           setPhone('')
           setTravelRadiusKm(typeof metadata.travel_radius_km === 'number' ? String(metadata.travel_radius_km) : '5')
           setAreasCovered(fallbackAreasCovered)
-          setLanguages(fallbackLanguages.length > 0 ? fallbackLanguages : ['English'])
+          setLanguages(fallbackLanguages)
           setAgeGroups(fallbackAgeGroups)
           setEducation(typeof metadata.education === 'string' ? metadata.education : '')
           setExperienceYears(
@@ -566,6 +566,11 @@ export default function DashboardPage() {
       return
     }
 
+    if (languages.length === 0) {
+      setError('Please select at least one language you can teach or communicate in before saving.')
+      return
+    }
+
     if (!hasTutorConsent) {
       setError('Please confirm your tutor consent before saving your profile.')
       return
@@ -677,7 +682,7 @@ export default function DashboardPage() {
         const persistedEducation = savedProfile.education || ''
 
         setAreasCovered(persistedAreasCovered)
-        setLanguages(persistedLanguages.length > 0 ? persistedLanguages : ['English'])
+        setLanguages(persistedLanguages)
         setAgeGroups(persistedAgeGroups)
 
         if (
@@ -1318,7 +1323,7 @@ export default function DashboardPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Languages</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Languages You Can Teach / Communicate In</label>
                 <div className="flex flex-wrap gap-2">
                   {LANGUAGE_OPTIONS.map((language) => {
                     const selected = languages.includes(language)
@@ -1338,6 +1343,10 @@ export default function DashboardPage() {
                     )
                   })}
                 </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  Choose the real languages you personally use with students. Arabic is especially useful for Quran,
+                  Tajweed, and Hifz tutors.
+                </p>
               </div>
 
               <div>
