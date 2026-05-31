@@ -3,12 +3,22 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-type DocumentType = 'national_id' | 'certificate' | 'cv'
+export type DocumentType =
+  | 'national_id'
+  | 'certificate'
+  | 'study_proof'
+  | 'teaching_reference'
+  | 'cv'
 
 interface DocumentUploadProps {
   tutorId: string
   documentType: DocumentType
   label: string
+  onDocumentStatusChange?: (payload: {
+    documentType: DocumentType
+    hasDocument: boolean
+    status: string | null
+  }) => void
 }
 
 interface TutorDocumentRow {
@@ -43,7 +53,12 @@ function getStatusBadge(status?: string | null) {
   }
 }
 
-export default function DocumentUpload({ tutorId, documentType, label }: DocumentUploadProps) {
+export default function DocumentUpload({
+  tutorId,
+  documentType,
+  label,
+  onDocumentStatusChange,
+}: DocumentUploadProps) {
   const supabase = createClient()
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -56,6 +71,11 @@ export default function DocumentUpload({ tutorId, documentType, label }: Documen
     if (!tutorId) {
       setIsLoading(false)
       setDocumentRow(null)
+      onDocumentStatusChange?.({
+        documentType,
+        hasDocument: false,
+        status: null,
+      })
       return
     }
 
@@ -74,13 +94,18 @@ export default function DocumentUpload({ tutorId, documentType, label }: Documen
 
       if (fetchError) throw fetchError
       setDocumentRow(data || null)
+      onDocumentStatusChange?.({
+        documentType,
+        hasDocument: Boolean(data),
+        status: data?.status || null,
+      })
     } catch (err) {
       console.error(err)
       setError('Could not load document status. Please refresh.')
     } finally {
       setIsLoading(false)
     }
-  }, [documentType, supabase, tutorId])
+  }, [documentType, onDocumentStatusChange, supabase, tutorId])
 
   useEffect(() => {
     void loadDocument()

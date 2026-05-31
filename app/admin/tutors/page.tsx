@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { getTutorDocumentTypeLabel } from '@/lib/tutor-review'
 
 interface PendingTutor {
   id: string
@@ -12,6 +13,27 @@ interface PendingTutor {
   hourly_rate: number | null
   bio: string | null
   applied_days_ago: number
+  has_profile_photo: boolean
+  review_path: 'qualification_verified' | 'profile_reviewed' | null
+  can_approve: boolean
+  document_statuses: Array<{
+    document_type: string
+    document_label?: string
+    status: string
+  }>
+}
+
+function formatReviewPath(reviewPath: PendingTutor['review_path']) {
+  if (reviewPath === 'qualification_verified') return 'Qualification Verified'
+  if (reviewPath === 'profile_reviewed') return 'Profile Reviewed'
+  return 'More evidence needed'
+}
+
+function formatDocumentStatus(status: string) {
+  const normalized = status.toLowerCase().trim()
+  if (normalized === 'approved') return 'Approved'
+  if (normalized === 'rejected') return 'Rejected'
+  return 'Pending'
 }
 
 export default function AdminTutorsPage() {
@@ -128,13 +150,33 @@ export default function AdminTutorsPage() {
                 <p><span className="font-medium">Subjects:</span> {(tutor.subjects || []).join(', ') || 'None listed'}</p>
                 <p><span className="font-medium">Rate:</span> D{(tutor.hourly_rate || 0).toLocaleString()}/hour</p>
                 <p><span className="font-medium">Bio:</span> {(tutor.bio || 'No bio provided.').slice(0, 120)}</p>
+                <p><span className="font-medium">Profile photo:</span> {tutor.has_profile_photo ? 'Uploaded' : 'Missing'}</p>
+                <p><span className="font-medium">Review path:</span> {formatReviewPath(tutor.review_path)}</p>
+                {tutor.document_statuses.length > 0 ? (
+                  <p>
+                    <span className="font-medium">Documents:</span>{' '}
+                    {tutor.document_statuses
+                      .map((document) =>
+                        `${document.document_label || getTutorDocumentTypeLabel(document.document_type)} (${formatDocumentStatus(document.status)})`
+                      )
+                      .join(', ')}
+                  </p>
+                ) : (
+                  <p><span className="font-medium">Documents:</span> No review documents uploaded yet.</p>
+                )}
               </div>
+
+              {!tutor.can_approve && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Public approval is blocked until this tutor has a profile photo and at least one approved review document.
+                </div>
+              )}
 
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
                   type="button"
                   onClick={() => void updateTutor(tutor.id, 'approve')}
-                  disabled={processingId === tutor.id}
+                  disabled={processingId === tutor.id || !tutor.can_approve}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
                 >
                   {processingId === tutor.id ? 'Processing...' : 'Approve'}

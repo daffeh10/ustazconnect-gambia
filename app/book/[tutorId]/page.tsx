@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
+import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 interface TutorProfile {
   id: string
@@ -16,6 +17,8 @@ interface TutorProfile {
   available_days: string[] | null
   profile_photo_url: string | null
   offers_online?: boolean | null
+  verification_status?: string | null
+  created_at: string | null
 }
 
 const HOURS_OPTIONS = [4, 8, 12, 16]
@@ -60,7 +63,8 @@ export default function BookTutorPage() {
       try {
         const { data: tutorData, error: tutorError } = await supabase
           .from('tutor_profiles')
-          .select('id,name,location,subjects,hourly_rate,available_days,profile_photo_url,offers_online')
+          .select('id,name,location,subjects,hourly_rate,available_days,profile_photo_url,offers_online,verification_status,created_at')
+          .eq('is_approved', true)
           .eq('id', tutorId)
           .maybeSingle<TutorProfile>()
 
@@ -68,7 +72,13 @@ export default function BookTutorPage() {
 
         if (!isMounted) return
 
-        if (!tutorData) {
+        if (
+          !tutorData ||
+          !isTutorPubliclyVisible({
+            verificationStatus: tutorData.verification_status,
+            createdAt: tutorData.created_at,
+          })
+        ) {
           setError('Tutor not found.')
           return
         }

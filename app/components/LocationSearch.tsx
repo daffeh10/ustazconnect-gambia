@@ -1,49 +1,43 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { LOCATION_REGIONS } from '@/lib/constants'
+import SearchableLocationInput from '@/app/components/SearchableLocationInput'
 
 export default function LocationSearch() {
   const [selectedLocation, setSelectedLocation] = useState('')
   const router = useRouter()
 
-  function handleSearch() {
-    if (selectedLocation) {
-      router.push(`/find-tutor?location=${encodeURIComponent(selectedLocation)}`)
-    } else {
-      router.push('/find-tutor')
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const normalizedLocation = selectedLocation.trim()
+
+    if (normalizedLocation) {
+      router.push(`/find-tutor?location=${encodeURIComponent(normalizedLocation)}`)
+      return
     }
+
+    router.push('/find-tutor')
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-6">
-      <label className="block text-left text-gray-700 font-medium mb-2">
-        Select your area
-      </label>
-      <select
+    <form
+      onSubmit={handleSearch}
+      className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-6"
+    >
+      <SearchableLocationInput
+        label="Select your area"
         value={selectedLocation}
-        onChange={(e) => setSelectedLocation(e.target.value)}
-        className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-      >
-        <option value="">Choose a location...</option>
-        {LOCATION_REGIONS.map((region) => (
-          <optgroup key={region.region} label={region.region}>
-            {region.locations.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+        onChange={setSelectedLocation}
+        placeholder="Search for Bakau, Brikama, Sukuta..."
+      />
       <button
-        type="button"
-        onClick={handleSearch}
+        type="submit"
         className="block w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition text-center"
       >
         Find Tutors Near Me
       </button>
-    </div>
+    </form>
   )
 }

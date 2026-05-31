@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import UstazProfileClient from './UstazProfileClient'
 import { createClient } from '@/lib/supabase/server'
+import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 interface TutorMetadataRow {
   id: string
@@ -9,6 +10,8 @@ interface TutorMetadataRow {
   subjects: string[] | null
   hourly_rate: number | null
   bio: string | null
+  verification_status: string | null
+  created_at: string | null
 }
 
 export async function generateMetadata({
@@ -21,12 +24,18 @@ export async function generateMetadata({
 
   const { data: tutor } = await supabase
     .from('tutor_profiles')
-    .select('id,name,location,subjects,hourly_rate,bio')
+    .select('id,name,location,subjects,hourly_rate,bio,verification_status,created_at')
     .eq('id', id)
     .eq('is_approved', true)
     .maybeSingle<TutorMetadataRow>()
 
-  if (!tutor) {
+  if (
+    !tutor ||
+    !isTutorPubliclyVisible({
+      verificationStatus: tutor.verification_status,
+      createdAt: tutor.created_at,
+    })
+  ) {
     return {
       title: 'Tutor Profile | TutorConnect Gambia',
       description: 'Browse verified tutors across The Gambia on TutorConnect Gambia.',

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
 import { buildPublicUrl, getFriendlyRegistrationError, passwordMeetsRequirements } from '@/lib/auth'
+import { TUTOR_REVIEW_CONTACT_EMAIL } from '@/lib/tutor-review'
 import {
   AGE_GROUP_OPTIONS,
   EDUCATION_OPTIONS,
@@ -708,7 +709,7 @@ export default function RegisterTutorPage() {
               We sent a confirmation link to your inbox. Please verify your email to continue.
             </p>
             <p className="text-sm text-gray-500 mt-3">
-              If you do not see it within a few minutes, check spam or use the resend button below. After signup, upload your ID and qualification documents in the dashboard so we can review and approve your profile.
+              If you do not see it within a few minutes, check spam or use the resend button below. After you confirm your email and sign in, you can use your dashboard to track your profile status, upload your photo and review documents, and see any next steps for approval. Questions: {TUTOR_REVIEW_CONTACT_EMAIL}
             </p>
             <button
               type="button"

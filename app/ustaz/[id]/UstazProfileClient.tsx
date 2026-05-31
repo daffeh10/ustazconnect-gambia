@@ -11,6 +11,7 @@ import ReviewCard from '@/app/components/ReviewCard'
 import LeaveReviewForm from '@/app/components/LeaveReviewForm'
 import ReportModal from '@/app/components/ReportModal'
 import { createClient } from '@/lib/supabase/client'
+import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 interface UstazProfile {
   id: string
@@ -86,6 +87,15 @@ export default function UstazProfileClient({ id }: { id: string }) {
           .single()
 
         if (error) throw error
+        if (
+          !data ||
+          !isTutorPubliclyVisible({
+            verificationStatus: data.verification_status,
+            createdAt: data.created_at,
+          })
+        ) {
+          throw new Error('Tutor not found.')
+        }
         setUstaz(data)
       } catch (err) {
         setError('Tutor not found.')
@@ -205,6 +215,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
   const recommendationCount = reviews.filter((review) => review.would_recommend).length
   const recommendationPercent =
     reviewCount > 0 ? Math.round((recommendationCount / reviewCount) * 100) : 0
+  const publicTutorName = formatPublicTutorName(ustaz.name)
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -225,7 +236,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
                 {ustaz.profile_photo_url ? (
                   <Image
                     src={ustaz.profile_photo_url}
-                    alt={`${ustaz.name} profile photo`}
+                    alt={`${publicTutorName} profile photo`}
                     width={96}
                     height={96}
                     className="w-full h-full object-cover"
@@ -237,7 +248,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
                 )}
               </div>
               <div className="text-white">
-                <h1 className="text-3xl font-bold">{ustaz.name}</h1>
+                <h1 className="text-3xl font-bold">{publicTutorName}</h1>
                 <div className="mt-2">
                   <VerificationBadge status={ustaz.verification_status} />
                 </div>
@@ -372,7 +383,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
               <div className="mt-6">
                 <LeaveReviewForm
                   tutorId={ustaz.id}
-                  tutorName={ustaz.name}
+                  tutorName={publicTutorName}
                   onSubmitted={() => {
                     void loadReviews()
                   }}
@@ -392,7 +403,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
             </div>
 
             {ustaz.user_id && (
-              <ReportModal reportedUserId={ustaz.user_id} tutorName={ustaz.name} />
+              <ReportModal reportedUserId={ustaz.user_id} tutorName={publicTutorName} />
             )}
           </div>
         </div>

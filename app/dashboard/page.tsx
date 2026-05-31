@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import ImageUpload from '@/app/components/ImageUpload'
 import DocumentUpload from '@/app/components/DocumentUpload'
+import type { DocumentType } from '@/app/components/DocumentUpload'
 import LessonCard, { Lesson } from '@/app/components/LessonCard'
 import {
   AGE_GROUP_OPTIONS,
@@ -21,6 +22,14 @@ import {
   TRAVEL_RADIUS_OPTIONS,
   TUTOR_PROFILE_TASK_2_3_SQL,
 } from '@/lib/tutor-profile'
+import {
+  BASIC_TUTOR_GRACE_PERIOD_DAYS,
+  getBasicTutorGraceInfo,
+  isTutorPubliclyVisible,
+  normalizeTutorVerificationStatus,
+  TUTOR_REVIEW_CONTACT_EMAIL,
+  type TutorVerificationStatus,
+} from '@/lib/tutor-review'
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const COMMISSION_RATE = 5
@@ -29,6 +38,7 @@ const DEFAULT_LESSON_MINUTES = 120
 interface TutorProfileRow {
   id: string
   user_id: string
+  created_at?: string | null
   name: string | null
   email: string | null
   phone: string | null
@@ -42,6 +52,7 @@ interface TutorProfileRow {
   available_times?: string[] | null
   profile_photo_url: string | null
   is_approved?: boolean | null
+  verification_status?: string | null
   offers_online?: boolean | null
   areas_covered?: string[] | null
   travel_radius_km?: number | null
@@ -131,6 +142,7 @@ export default function DashboardPage() {
   const [profileId, setProfileId] = useState('')
   const [userId, setUserId] = useState('')
   const [email, setEmail] = useState('')
+  const [profileCreatedAt, setProfileCreatedAt] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -151,9 +163,13 @@ export default function DashboardPage() {
   const [timeSlotInput, setTimeSlotInput] = useState('')
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('')
   const [isApproved, setIsApproved] = useState(false)
+  const [verificationStatus, setVerificationStatus] = useState<TutorVerificationStatus>('basic')
   const [offersOnline, setOffersOnline] = useState(false)
   const [hasTutorConsent, setHasTutorConsent] = useState(false)
   const [consentGivenAt, setConsentGivenAt] = useState<string | null>(null)
+  const [documentStatuses, setDocumentStatuses] = useState<
+    Partial<Record<DocumentType, string | null>>
+  >({})
   const [bookingRequests, setBookingRequests] = useState<BookingRow[]>([])
   const [awaitingPaymentBookings, setAwaitingPaymentBookings] = useState<BookingRow[]>([])
   const [activeBookings, setActiveBookings] = useState<BookingRow[]>([])
@@ -190,6 +206,17 @@ export default function DashboardPage() {
       minute: '2-digit',
     })
   }
+
+  const handleDocumentStatusChange = useCallback((payload: {
+    documentType: DocumentType
+    hasDocument: boolean
+    status: string | null
+  }) => {
+    setDocumentStatuses((prev) => ({
+      ...prev,
+      [payload.documentType]: payload.hasDocument ? payload.status || 'pending' : null,
+    }))
+  }, [])
 
   const loadInquiriesForTutor = useCallback(async (tutorProfileId: string) => {
     setIsInquiriesLoading(true)
@@ -398,6 +425,7 @@ export default function DashboardPage() {
         if (profile) {
           const normalizedStoredPhone = extractGambiaPhoneDigits(profile.phone)
           setProfileId(profile.id)
+          setProfileCreatedAt(profile.created_at || null)
           setName(profile.name || '')
           setGender(profile.gender || '')
           setStoredPhoneDigits(normalizedStoredPhone)
@@ -416,6 +444,7 @@ export default function DashboardPage() {
           setAvailableTimes(Array.isArray(profile.available_times) ? profile.available_times : [])
           setProfilePhotoUrl(profile.profile_photo_url || '')
           setIsApproved(Boolean(profile.is_approved))
+          setVerificationStatus(normalizeTutorVerificationStatus(profile.verification_status))
           setOffersOnline(Boolean(profile.offers_online))
           setConsentGivenAt(profile.consent_given_at || null)
           setHasTutorConsent(Boolean(profile.consent_given_at))
@@ -439,6 +468,8 @@ export default function DashboardPage() {
           const fallbackAgeGroups = normalizeStringArray(metadata.age_groups as string[] | undefined)
 
           setIsApproved(false)
+          setProfileCreatedAt(null)
+          setVerificationStatus('basic')
           setOffersOnline(Boolean(metadata.offers_online))
           setName(fallbackName)
           setGender(fallbackGender)
@@ -614,7 +645,6 @@ export default function DashboardPage() {
         bio: bio.trim() || null,
         profile_photo_url: profilePhotoUrl || null,
         is_active: true,
-        is_approved: isApproved,
         updated_at: new Date().toISOString(),
       }
 
@@ -871,6 +901,27 @@ export default function DashboardPage() {
     })
   }
 
+  const reviewDocumentStatuses = [
+    documentStatuses.certificate,
+    documentStatuses.study_proof,
+    documentStatuses.teaching_reference,
+  ]
+  const hasPendingReviewDocument = reviewDocumentStatuses.some(
+    (status) => (status || '').toLowerCase() === 'pending'
+  )
+  const hasApprovedQualificationDocument =
+    (documentStatuses.certificate || '').toLowerCase() === 'approved'
+  const hasApprovedProfileReviewedDocument =
+    (documentStatuses.study_proof || '').toLowerCase() === 'approved' ||
+    (documentStatuses.teaching_reference || '').toLowerCase() === 'approved'
+  const shouldShowVerificationChecklist = verificationStatus === 'basic'
+  const basicTutorGraceInfo = getBasicTutorGraceInfo(profileCreatedAt)
+  const isProfilePubliclyVisible = isTutorPubliclyVisible({
+    isApproved,
+    verificationStatus,
+    createdAt: profileCreatedAt,
+  })
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b border-gray-200">
@@ -893,7 +944,68 @@ export default function DashboardPage() {
         <div className="mb-6">
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Tutor Dashboard</h1>
           <p className="text-base text-gray-600 mt-2">Update your profile to help families find you faster.</p>
-          {profileId ? (
+          {!isApproved && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Your tutor profile is under review. Before we can list it publicly, upload a clear profile photo and at least one review document. We aim to respond within 5 working days. Questions: {TUTOR_REVIEW_CONTACT_EMAIL}
+            </div>
+          )}
+          {shouldShowVerificationChecklist && profileId && (
+            <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
+              <p className="font-semibold">
+                {isApproved && isProfilePubliclyVisible
+                  ? 'Your profile is live, but it still shows the Basic label.'
+                  : isApproved
+                    ? 'Your Basic profile is no longer public right now.'
+                  : 'Complete the items below so we can review and list your profile.'}
+              </p>
+              <p className="mt-1 text-sky-800">
+                Once these are in place, your profile can move toward{' '}
+                <span className="font-medium">Profile Reviewed</span> or{' '}
+                <span className="font-medium">Qualification Verified</span>, depending on the documents you upload.
+              </p>
+              {isApproved && (
+                <p className="mt-2 text-sky-800">
+                  Basic profiles can stay public for up to {BASIC_TUTOR_GRACE_PERIOD_DAYS} days while you complete verification.
+                  {isProfilePubliclyVisible
+                    ? ` You currently have ${basicTutorGraceInfo.daysRemaining} day${basicTutorGraceInfo.daysRemaining === 1 ? '' : 's'} left before your public listing is paused.`
+                    : ' Your public listing is paused until you upload the missing items below and complete review.'}
+                </p>
+              )}
+              <ul className="mt-3 space-y-2">
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 font-semibold">{profilePhotoUrl ? 'Done:' : 'Missing:'}</span>
+                  <span>
+                    {profilePhotoUrl ? 'Your profile photo has been uploaded.' : 'Add a clear profile photo to complete your profile.'}{' '}
+                    <a href="#profile-photo" className="underline underline-offset-2">
+                      Go to photo upload
+                    </a>
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 font-semibold">
+                    {hasApprovedQualificationDocument || hasApprovedProfileReviewedDocument
+                      ? 'Done:'
+                      : hasPendingReviewDocument
+                        ? 'Pending:'
+                        : 'Missing:'}
+                  </span>
+                  <span>
+                    {hasApprovedQualificationDocument
+                      ? 'Your qualification document has been approved.'
+                      : hasApprovedProfileReviewedDocument
+                        ? 'Your review document has been approved.'
+                        : hasPendingReviewDocument
+                          ? 'We have received your review document and it is waiting for admin review.'
+                          : 'Add at least one review document so we can assess your profile for stronger verification.'}{' '}
+                    <a href="#documents" className="underline underline-offset-2">
+                      Go to documents
+                    </a>
+                  </span>
+                </li>
+              </ul>
+            </div>
+          )}
+          {profileId && isApproved && isProfilePubliclyVisible ? (
             <Link
               href={`/tutor/${profileId}`}
               target="_blank"
@@ -902,6 +1014,14 @@ export default function DashboardPage() {
             >
               View My Public Profile
             </Link>
+          ) : profileId && isApproved ? (
+            <p className="text-sm text-gray-500 mt-4">
+              Your account is active, but your public listing is paused until you complete the missing verification items.
+            </p>
+          ) : profileId ? (
+            <p className="text-sm text-gray-500 mt-4">
+              Your profile is saved but not public yet. We will list it after review is complete.
+            </p>
           ) : (
             <p className="text-sm text-gray-500 mt-4">
               Save your profile first to generate your public profile link.
@@ -1158,12 +1278,15 @@ export default function DashboardPage() {
         {activeTab === 'profile' ? (
           <>
             <div className="grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1">
+              <div id="profile-photo" className="lg:col-span-1">
                 <ImageUpload
                   currentName={name || 'Tutor'}
                   currentPhotoUrl={profilePhotoUrl || undefined}
                   onUpload={(url) => setProfilePhotoUrl(url)}
                 />
+                <p className="mt-3 text-sm text-gray-500">
+                  A clear profile photo is required before your tutor profile can be approved and listed publicly.
+                </p>
               </div>
 
               <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -1217,7 +1340,7 @@ export default function DashboardPage() {
                     value={phone}
                     onChange={(e) => setPhone(extractGambiaPhoneDigits(e.target.value))}
                     className="w-full rounded-r-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-                    placeholder="3825155"
+                    placeholder="Enter 7 digits after +220"
                     maxLength={7}
                   />
                 </div>
@@ -1537,25 +1660,34 @@ export default function DashboardPage() {
               <div id="documents">
                 <h2 className="text-lg font-semibold text-gray-900">Verification Documents</h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  Upload your ID and certificates to earn a Verified badge. We review within 24 hours.
+                  Upload at least one review document below so we can assess your profile. We aim to respond within 5 working days.
                 </p>
 
                 {profileId ? (
                   <div className="space-y-3 mt-4">
                     <DocumentUpload
                       tutorId={profileId}
-                      documentType="national_id"
-                      label="National ID or Passport (required)"
+                      documentType="certificate"
+                      label="Qualification certificate, degree, or transcript (for Qualification Verified)"
+                      onDocumentStatusChange={handleDocumentStatusChange}
                     />
                     <DocumentUpload
                       tutorId={profileId}
-                      documentType="certificate"
-                      label="Teaching Certificate or Degree (required)"
+                      documentType="study_proof"
+                      label="Proof of current study or enrollment (for Profile Reviewed)"
+                      onDocumentStatusChange={handleDocumentStatusChange}
+                    />
+                    <DocumentUpload
+                      tutorId={profileId}
+                      documentType="teaching_reference"
+                      label="Teaching reference or other competence proof (for Profile Reviewed)"
+                      onDocumentStatusChange={handleDocumentStatusChange}
                     />
                     <DocumentUpload
                       tutorId={profileId}
                       documentType="cv"
-                      label="CV / Resume (optional)"
+                      label="CV / resume (optional supporting document)"
+                      onDocumentStatusChange={handleDocumentStatusChange}
                     />
                   </div>
                 ) : (

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 function getBaseUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://tutorconnectgambia.com').replace(/\/$/, '')
@@ -43,14 +44,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const supabase = createAdminClient()
     const { data: tutors } = await supabase
       .from('tutor_profiles')
-      .select('id')
+      .select('id,verification_status,created_at')
       .eq('is_approved', true)
 
-    const tutorRoutes: MetadataRoute.Sitemap = (tutors ?? []).map((tutor) => ({
-      url: `${baseUrl}/tutor/${tutor.id}`,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    }))
+    const tutorRoutes: MetadataRoute.Sitemap = (tutors ?? [])
+      .filter((tutor) =>
+        isTutorPubliclyVisible({
+          verificationStatus: tutor.verification_status,
+          createdAt: tutor.created_at,
+        })
+      )
+      .map((tutor) => ({
+        url: `${baseUrl}/tutor/${tutor.id}`,
+        changeFrequency: 'weekly',
+        priority: 0.8,
+      }))
 
     return [...staticRoutes, ...tutorRoutes]
   } catch {

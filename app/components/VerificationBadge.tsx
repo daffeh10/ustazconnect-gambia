@@ -1,3 +1,5 @@
+import { normalizeTutorVerificationStatus } from '@/lib/tutor-review'
+
 interface VerificationBadgeProps {
   status?: string | null
 }
@@ -7,13 +9,20 @@ type BadgeConfig = {
   classes: string
 }
 
-const BADGE_CONFIG: Record<'basic' | 'verified' | 'premium', BadgeConfig> = {
+const BADGE_CONFIG: Record<
+  'basic' | 'profile_reviewed' | 'qualification_verified' | 'premium',
+  BadgeConfig
+> = {
   basic: {
     text: 'Basic',
     classes: 'bg-gray-100 text-gray-600',
   },
-  verified: {
-    text: '✓ Verified',
+  profile_reviewed: {
+    text: 'Profile Reviewed',
+    classes: 'bg-sky-100 text-sky-700',
+  },
+  qualification_verified: {
+    text: 'Qualification Verified',
     classes: 'bg-emerald-100 text-emerald-700',
   },
   premium: {
@@ -22,16 +31,8 @@ const BADGE_CONFIG: Record<'basic' | 'verified' | 'premium', BadgeConfig> = {
   },
 }
 
-function normalizeStatus(status?: string | null): 'basic' | 'verified' | 'premium' {
-  const cleaned = (status || '').toLowerCase().trim()
-
-  if (cleaned === 'verified') return 'verified'
-  if (cleaned === 'premium') return 'premium'
-  return 'basic'
-}
-
 export default function VerificationBadge({ status }: VerificationBadgeProps) {
-  const normalized = normalizeStatus(status)
+  const normalized = normalizeTutorVerificationStatus(status)
   const badge = BADGE_CONFIG[normalized]
 
   return (

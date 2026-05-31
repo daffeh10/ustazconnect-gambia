@@ -13,6 +13,7 @@ import ReportModal from '@/app/components/ReportModal'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
+import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 interface UstazProfile {
   id: string
@@ -110,6 +111,15 @@ export default function UstazProfileClient({ id }: { id: string }) {
         }
 
         if (error) throw error
+        if (
+          !data ||
+          !isTutorPubliclyVisible({
+            verificationStatus: data.verification_status,
+            createdAt: data.created_at,
+          })
+        ) {
+          throw new Error('Tutor not found.')
+        }
         setUstaz(data)
       } catch (err) {
         setError('Tutor not found.')
@@ -189,6 +199,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
   const recommendationCount = reviews.filter((review) => review.would_recommend).length
   const recommendationPercent =
     reviewCount > 0 ? Math.round((recommendationCount / reviewCount) * 100) : 0
+  const publicTutorName = formatPublicTutorName(ustaz.name)
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -206,13 +217,13 @@ export default function UstazProfileClient({ id }: { id: string }) {
             <div className="flex items-center gap-6">
               {/* Avatar — show uploaded photo or fall back to initial */}
               <Avatar
-                name={ustaz.name}
+                name={publicTutorName}
                 photoUrl={ustaz.profile_photo_url}
                 size="lg"
                 className="bg-white text-emerald-600"
               />
               <div className="text-white">
-                <h1 className="text-3xl font-bold">{ustaz.name}</h1>
+                <h1 className="text-3xl font-bold">{publicTutorName}</h1>
                 <div className="mt-2">
                   <VerificationBadge status={ustaz.verification_status} />
                 </div>
@@ -410,7 +421,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
               <div className="mt-6">
                 <LeaveReviewForm
                   tutorId={ustaz.id}
-                  tutorName={ustaz.name}
+                  tutorName={publicTutorName}
                   onSubmitted={() => {
                     void loadReviews()
                   }}
@@ -429,7 +440,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
             </div>
 
             {ustaz.user_id && (
-              <ReportModal reportedUserId={ustaz.user_id} tutorName={ustaz.name} />
+              <ReportModal reportedUserId={ustaz.user_id} tutorName={publicTutorName} />
             )}
           </div>
         </div>

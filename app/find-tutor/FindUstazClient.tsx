@@ -3,13 +3,17 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { LOCATION_REGIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
+import { matchesLocationSearch } from '@/lib/location-search'
+import { matchesSubjectSearch } from '@/lib/subject-search'
+import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
 import Link from 'next/link'
 import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
 import VerificationBadge from '@/app/components/VerificationBadge'
 import StarRating from '@/app/components/StarRating'
 import Avatar from '@/app/components/Avatar'
+import SearchableLocationInput from '@/app/components/SearchableLocationInput'
+import SearchableSubjectInput from '@/app/components/SearchableSubjectInput'
 
 interface UstazProfile {
   id: string
@@ -26,6 +30,7 @@ interface UstazProfile {
   verification_status?: string | null
   average_rating?: number | string | null
   review_count?: number | null
+  created_at: string
 }
 
 const RECENT_VIEWED_KEY = 'rv_tutors'
@@ -78,7 +83,12 @@ function FindUstazInner() {
 
         if (error) throw error
 
-        const tutors = (data || []) as UstazProfile[]
+        const tutors = ((data || []) as UstazProfile[]).filter((tutor) =>
+          isTutorPubliclyVisible({
+            verificationStatus: tutor.verification_status,
+            createdAt: tutor.created_at,
+          })
+        )
         const { data: reviewsData, error: reviewsError } = await supabase
           .from('reviews')
           .select('tutor_id,rating')
@@ -164,7 +174,12 @@ function FindUstazInner() {
 
         if (error) throw error
 
-        const tutors = (data || []) as UstazProfile[]
+        const tutors = ((data || []) as UstazProfile[]).filter((tutor) =>
+          isTutorPubliclyVisible({
+            verificationStatus: tutor.verification_status,
+            createdAt: tutor.created_at,
+          })
+        )
         const orderedTutors = storedIds
           .map((id) => tutors.find((tutor) => tutor.id === id))
           .filter((tutor): tutor is UstazProfile => Boolean(tutor))
@@ -183,21 +198,11 @@ function FindUstazInner() {
   // React re-renders automatically whenever ustazs, locationFilter, or
   // subjectFilter changes, so this always stays up to date.
   const filteredUstazs = ustazs.filter((u) => {
-    // Location: if no filter chosen, every tutor passes.
-    // .toLowerCase().trim() means "Bakau", "bakau", " Bakau " all match.
-    const locationMatch =
-      locationFilter === '' ||
-      (u.location || '').toLowerCase().trim() ===
-        locationFilter.toLowerCase().trim()
+    const locationMatch = matchesLocationSearch(u.location, locationFilter)
 
     // Subject: if no filter chosen, every tutor passes.
     // .some() checks each subject in the array one by one.
-    const subjectMatch =
-      subjectFilter === '' ||
-      (u.subjects || []).some(
-        (s) =>
-          s.toLowerCase().trim() === subjectFilter.toLowerCase().trim()
-      )
+    const subjectMatch = matchesSubjectSearch(u.subjects, subjectFilter)
 
     const rateMatch = maxRate >= 500 || (u.hourly_rate || 0) <= maxRate
     const onlineMatch = !onlineOnly || Boolean(u.offers_online)
@@ -235,9 +240,15 @@ function FindUstazInner() {
                   className="w-48 shrink-0 bg-white border border-gray-200 rounded-xl p-3"
                 >
                   <div className="flex items-center gap-3">
-                    <Avatar name={tutor.name} photoUrl={tutor.profile_photo_url} size="sm" />
+                    <Avatar
+                      name={formatPublicTutorName(tutor.name)}
+                      photoUrl={tutor.profile_photo_url}
+                      size="sm"
+                    />
                     <div className="min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">{tutor.name}</p>
+                      <p className="font-semibold text-gray-900 truncate">
+                        {formatPublicTutorName(tutor.name)}
+                      </p>
                       <p className="text-sm text-gray-500 truncate">{tutor.location}</p>
                     </div>
                   </div>
@@ -260,51 +271,24 @@ function FindUstazInner() {
         <div className="bg-white rounded-xl shadow-sm p-4 mb-8">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
 
-            {/* Location dropdown */}
+            {/* Location search */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Location
-              </label>
-              <select
+              <SearchableLocationInput
+                label="Location"
                 value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              >
-                {/* Empty value = "show all" */}
-                <option value="">All Locations</option>
-                {LOCATION_REGIONS.map((region) => (
-                  <optgroup key={region.region} label={region.region}>
-                    {region.locations.map((loc) => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                onChange={setLocationFilter}
+                placeholder="Search by town or area"
+              />
             </div>
 
-            {/* Subject dropdown */}
+            {/* Subject search */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subject
-              </label>
-              <select
+              <SearchableSubjectInput
+                label="Subject"
                 value={subjectFilter}
-                onChange={(e) => setSubjectFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              >
-                <option value="">All Subjects</option>
-                {SUBJECT_CATEGORIES.map((category) => (
-                  <optgroup key={category.category} label={category.category}>
-                    {category.subjects.map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                onChange={setSubjectFilter}
+                placeholder="Search by subject or exam"
+              />
             </div>
 
             <div>
@@ -376,8 +360,8 @@ function FindUstazInner() {
           <p className="text-gray-600 mb-4">
             Showing {filteredUstazs.length}{' '}
             {filteredUstazs.length === 1 ? 'tutor' : 'tutors'}
-            {locationFilter && ` in ${locationFilter}`}
-            {subjectFilter && ` for ${subjectFilter}`}
+            {locationFilter && ` matching "${locationFilter.trim()}"`}
+            {subjectFilter && ` for "${subjectFilter.trim()}"`}
             {onlineOnly && ' with online lessons available'}
           </p>
         )}
@@ -412,9 +396,15 @@ function FindUstazInner() {
               >
                 {/* Avatar — show photo or initial */}
                 <div className="flex items-center gap-4 mb-4">
-                  <Avatar name={ustaz.name} photoUrl={ustaz.profile_photo_url} size="md" />
+                  <Avatar
+                    name={formatPublicTutorName(ustaz.name)}
+                    photoUrl={ustaz.profile_photo_url}
+                    size="md"
+                  />
                   <div>
-                    <h3 className="font-semibold text-gray-900">{ustaz.name}</h3>
+                    <h3 className="font-semibold text-gray-900">
+                      {formatPublicTutorName(ustaz.name)}
+                    </h3>
                     <p className="text-sm text-gray-500">{ustaz.location}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <VerificationBadge status={ustaz.verification_status} />

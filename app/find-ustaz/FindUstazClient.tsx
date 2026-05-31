@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { LOCATION_REGIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
+import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 import Link from 'next/link'
 import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
@@ -26,6 +27,7 @@ interface UstazProfile {
   verification_status?: string | null
   average_rating?: number | string | null
   review_count?: number | null
+  created_at: string
 }
 
 const RECENT_VIEWED_KEY = 'rv_tutors'
@@ -78,7 +80,12 @@ function FindUstazInner() {
 
         if (error) throw error
 
-        const tutors = (data || []) as UstazProfile[]
+        const tutors = ((data || []) as UstazProfile[]).filter((tutor) =>
+          isTutorPubliclyVisible({
+            verificationStatus: tutor.verification_status,
+            createdAt: tutor.created_at,
+          })
+        )
         const { data: reviewsData, error: reviewsError } = await supabase
           .from('reviews')
           .select('tutor_id,rating')
@@ -164,7 +171,12 @@ function FindUstazInner() {
 
         if (error) throw error
 
-        const tutors = (data || []) as UstazProfile[]
+        const tutors = ((data || []) as UstazProfile[]).filter((tutor) =>
+          isTutorPubliclyVisible({
+            verificationStatus: tutor.verification_status,
+            createdAt: tutor.created_at,
+          })
+        )
         const orderedTutors = storedIds
           .map((id) => tutors.find((tutor) => tutor.id === id))
           .filter((tutor): tutor is UstazProfile => Boolean(tutor))
