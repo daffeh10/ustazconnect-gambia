@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext } from '@/lib/admin'
 import {
   getTutorDocumentTypeLabel,
+  normalizeTutorVerificationStatus,
   getTutorReviewPathFromApprovedDocumentTypes,
 } from '@/lib/tutor-review'
 
@@ -16,6 +17,7 @@ interface TutorRow {
   hourly_rate: number | null
   bio: string | null
   profile_photo_url: string | null
+  is_approved: boolean | null
   verification_status: string | null
   created_at: string
 }
@@ -49,6 +51,19 @@ function getLatestDocumentStatusByType(documents: TutorDocumentRow[]) {
   return latestStatusByType
 }
 
+function isCoreProfileReadyForBasicApproval(tutor: TutorRow) {
+  return Boolean(
+    tutor.name?.trim() &&
+    tutor.email?.trim() &&
+    tutor.phone?.trim() &&
+    tutor.location?.trim() &&
+    Array.isArray(tutor.subjects) &&
+    tutor.subjects.length > 0 &&
+    typeof tutor.hourly_rate === 'number' &&
+    tutor.hourly_rate > 0
+  )
+}
+
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
@@ -60,14 +75,16 @@ export async function GET() {
     const { data, error } = await supabase
       .from('tutor_profiles')
       .select(
-        'id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,verification_status,created_at'
+        'id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,created_at'
       )
-      .eq('is_approved', false)
       .order('created_at', { ascending: true })
 
     if (error) throw error
 
-    const tutors = (data ?? []) as TutorRow[]
+    const tutors = ((data ?? []) as TutorRow[]).filter((tutor) => {
+      const normalizedStatus = normalizeTutorVerificationStatus(tutor.verification_status)
+      return !tutor.is_approved || (Boolean(tutor.is_approved) && normalizedStatus === 'basic')
+    })
     const tutorIds = tutors.map((tutor) => tutor.id)
     let allDocuments: TutorDocumentRow[] = []
 
@@ -97,13 +114,17 @@ export async function GET() {
         .filter(([, status]) => status === 'approved')
         .map(([documentType]) => documentType)
       const reviewPath = getTutorReviewPathFromApprovedDocumentTypes(approvedDocumentTypes)
+      const canEarnVerifiedStatus = Boolean(tutor.profile_photo_url) && Boolean(reviewPath)
+      const approvalOutcome = canEarnVerifiedStatus ? reviewPath : 'basic'
+      const canApprove = isCoreProfileReadyForBasicApproval(tutor)
 
       return {
         ...tutor,
         applied_days_ago: daysSince(tutor.created_at),
         has_profile_photo: Boolean(tutor.profile_photo_url),
         review_path: reviewPath,
-        can_approve: Boolean(tutor.profile_photo_url) && Boolean(reviewPath),
+        approval_outcome: approvalOutcome,
+        can_approve: canApprove,
         document_statuses: Array.from(latestStatusByType.entries()).map(
           ([documentType, status]) => ({
             document_type: documentType,
@@ -141,17 +162,27 @@ export async function PATCH(request: Request) {
     if (action === 'approve') {
       const tutorResult = await supabase
         .from('tutor_profiles')
-        .select('id,profile_photo_url')
+        .select('id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,created_at')
         .eq('id', tutorId)
         .single()
-      const tutor = tutorResult.data as { id: string; profile_photo_url: string | null } | null
+      const tutor = tutorResult.data as TutorRow | null
       const tutorError = tutorResult.error
 
       if (tutorError) throw tutorError
 
-      if (!tutor?.profile_photo_url) {
+      if (!tutor) {
         return NextResponse.json(
-          { error: 'A profile photo is required before this tutor can be approved.' },
+          { error: 'Tutor not found.' },
+          { status: 404 }
+        )
+      }
+
+      if (!isCoreProfileReadyForBasicApproval(tutor)) {
+        return NextResponse.json(
+          {
+            error:
+              'This tutor still needs the core public profile details before approval: phone, location, at least one subject, and a valid hourly rate.',
+          },
           { status: 400 }
         )
       }
@@ -171,34 +202,33 @@ export async function PATCH(request: Request) {
         .filter(([, status]) => status === 'approved')
         .map(([documentType]) => documentType)
       const reviewPath = getTutorReviewPathFromApprovedDocumentTypes(approvedDocumentTypes)
-
-      if (!reviewPath) {
-        return NextResponse.json(
-          {
-            error:
-              'Approve a qualification document, current study proof, or teaching reference before listing this tutor.',
-          },
-          { status: 400 }
-        )
-      }
+      const approvalOutcome =
+        tutor.profile_photo_url && reviewPath ? reviewPath : 'basic'
 
       const { error: approveError } = await supabase
         .from('tutor_profiles')
         .update({
           is_approved: true,
-          verification_status: reviewPath,
+          verification_status: approvalOutcome,
           updated_at: new Date().toISOString(),
         })
         .eq('id', tutorId)
 
       if (approveError) throw approveError
 
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({
+        ok: true,
+        approval_outcome: approvalOutcome,
+      })
     }
 
     const { error } = await supabase
       .from('tutor_profiles')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .update({
+        is_active: false,
+        is_approved: false,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', tutorId)
 
     if (error) throw error

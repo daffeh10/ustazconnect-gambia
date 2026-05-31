@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { getTutorDocumentTypeLabel } from '@/lib/tutor-review'
 
@@ -12,9 +13,11 @@ interface PendingTutor {
   subjects: string[] | null
   hourly_rate: number | null
   bio: string | null
+  is_approved: boolean | null
   applied_days_ago: number
   has_profile_photo: boolean
   review_path: 'qualification_verified' | 'profile_reviewed' | null
+  approval_outcome: 'basic' | 'qualification_verified' | 'profile_reviewed'
   can_approve: boolean
   document_statuses: Array<{
     document_type: string
@@ -29,11 +32,44 @@ function formatReviewPath(reviewPath: PendingTutor['review_path']) {
   return 'More evidence needed'
 }
 
+function formatApprovalOutcome(approvalOutcome: PendingTutor['approval_outcome']) {
+  if (approvalOutcome === 'qualification_verified') return 'Qualification Verified'
+  if (approvalOutcome === 'profile_reviewed') return 'Profile Reviewed'
+  return 'Basic'
+}
+
 function formatDocumentStatus(status: string) {
   const normalized = status.toLowerCase().trim()
   if (normalized === 'approved') return 'Approved'
   if (normalized === 'rejected') return 'Rejected'
   return 'Pending'
+}
+
+function getApprovalBlocker(tutor: PendingTutor) {
+  const missingItems: string[] = []
+
+  if (!tutor.phone?.trim()) missingItems.push('phone number')
+  if (!tutor.location?.trim()) missingItems.push('location')
+  if (!Array.isArray(tutor.subjects) || tutor.subjects.length === 0) missingItems.push('at least one subject')
+  if (!tutor.hourly_rate || tutor.hourly_rate <= 0) missingItems.push('a valid hourly rate')
+
+  if (missingItems.length === 0) {
+    return 'This tutor still needs a complete core public profile before approval.'
+  }
+
+  return `This tutor still needs these core public profile details before approval: ${missingItems.join(', ')}.`
+}
+
+function getFollowUpMessage(tutor: PendingTutor) {
+  if (tutor.approval_outcome !== 'basic') {
+    return 'This tutor is ready to be approved with a stronger public trust label.'
+  }
+
+  if (tutor.is_approved) {
+    return 'This tutor is already live as Basic. Keep them here until they upload the missing verification items and are ready for an upgrade.'
+  }
+
+  return 'You can approve this tutor as Basic now. They can stay live temporarily while they upload a profile photo and supporting documents.'
 }
 
 export default function AdminTutorsPage() {
@@ -45,10 +81,26 @@ export default function AdminTutorsPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [processingId, setProcessingId] = useState('')
 
+  async function loadTutors() {
+    try {
+      const response = await fetch('/api/admin/tutors')
+      const payload = (await response.json()) as { tutors?: PendingTutor[]; error?: string }
+      if (!response.ok) {
+        throw new Error(payload.error || 'Could not load tutors.')
+      }
+      setTutors(payload.tutors || [])
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Could not load tutors.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     let isMounted = true
 
-    async function loadTutors() {
+    async function loadTutorsSafely() {
       try {
         const response = await fetch('/api/admin/tutors')
         const payload = (await response.json()) as { tutors?: PendingTutor[]; error?: string }
@@ -70,7 +122,7 @@ export default function AdminTutorsPage() {
       }
     }
 
-    void loadTutors()
+    void loadTutorsSafely()
     return () => {
       isMounted = false
     }
@@ -91,15 +143,26 @@ export default function AdminTutorsPage() {
           reason: action === 'reject' ? rejectReason.trim() : null,
         }),
       })
-      const payload = (await response.json()) as { error?: string }
+      const payload = (await response.json()) as {
+        error?: string
+        approval_outcome?: PendingTutor['approval_outcome']
+      }
       if (!response.ok) {
         throw new Error(payload.error || 'Could not update tutor.')
       }
 
-      setTutors((prev) => prev.filter((tutor) => tutor.id !== tutorId))
       setRejectId('')
       setRejectReason('')
-      setToast(action === 'approve' ? 'Tutor approved.' : 'Tutor rejected.')
+      await loadTutors()
+      if (action === 'approve') {
+        setToast(
+          payload.approval_outcome === 'basic'
+            ? 'Tutor approved as Basic.'
+            : 'Tutor approved.'
+        )
+      } else {
+        setToast('Tutor rejected.')
+      }
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Could not update tutor.')
@@ -111,8 +174,18 @@ export default function AdminTutorsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Tutor Approvals</h1>
-        <p className="text-gray-600 mt-2">Review tutor applications waiting for approval.</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Tutor Reviews</h1>
+            <p className="text-gray-600 mt-2">Approve new tutors and follow up on live Basic tutors who still need stronger verification.</p>
+          </div>
+          <Link
+            href="/admin/documents"
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Review Documents
+          </Link>
+        </div>
       </div>
 
       {toast && (
@@ -130,7 +203,7 @@ export default function AdminTutorsPage() {
         <p className="text-gray-500">Loading tutor applications...</p>
       ) : tutors.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white px-6 py-10 text-center text-gray-500">
-          No pending tutor applications right now.
+          No tutor reviews need action right now.
         </div>
       ) : (
         <div className="space-y-4">
@@ -143,7 +216,14 @@ export default function AdminTutorsPage() {
                     {tutor.email} · {tutor.phone || 'No phone'} · {tutor.location || 'No location'}
                   </p>
                 </div>
-                <p className="text-sm text-gray-500">Applied {tutor.applied_days_ago} day{tutor.applied_days_ago === 1 ? '' : 's'} ago</p>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">
+                    Applied {tutor.applied_days_ago} day{tutor.applied_days_ago === 1 ? '' : 's'} ago
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-gray-700">
+                    {tutor.is_approved ? 'Live as Basic' : 'Pending approval'}
+                  </p>
+                </div>
               </div>
 
               <div className="mt-4 text-sm text-gray-700 space-y-2">
@@ -152,6 +232,7 @@ export default function AdminTutorsPage() {
                 <p><span className="font-medium">Bio:</span> {(tutor.bio || 'No bio provided.').slice(0, 120)}</p>
                 <p><span className="font-medium">Profile photo:</span> {tutor.has_profile_photo ? 'Uploaded' : 'Missing'}</p>
                 <p><span className="font-medium">Review path:</span> {formatReviewPath(tutor.review_path)}</p>
+                <p><span className="font-medium">Approval outcome:</span> {formatApprovalOutcome(tutor.approval_outcome)}</p>
                 {tutor.document_statuses.length > 0 ? (
                   <p>
                     <span className="font-medium">Documents:</span>{' '}
@@ -166,9 +247,16 @@ export default function AdminTutorsPage() {
                 )}
               </div>
 
-              {!tutor.can_approve && (
+              {!tutor.can_approve ? (
                 <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  Public approval is blocked until this tutor has a profile photo and at least one approved review document.
+                  {getApprovalBlocker(tutor)}{' '}
+                  <Link href="/admin/documents" className="font-medium underline underline-offset-2">
+                    Open Documents
+                  </Link>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                  {getFollowUpMessage(tutor)}
                 </div>
               )}
 
@@ -179,7 +267,13 @@ export default function AdminTutorsPage() {
                   disabled={processingId === tutor.id || !tutor.can_approve}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
                 >
-                  {processingId === tutor.id ? 'Processing...' : 'Approve'}
+                  {processingId === tutor.id
+                    ? 'Processing...'
+                    : tutor.is_approved
+                      ? 'Upgrade status'
+                      : tutor.approval_outcome === 'basic'
+                        ? 'Approve as Basic'
+                        : 'Approve'}
                 </button>
                 <button
                   type="button"
