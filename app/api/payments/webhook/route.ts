@@ -1,14 +1,19 @@
+import crypto from 'crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getModemPayClient } from '@/lib/payments'
+import { getWaychitWebhookSecret } from '@/lib/payments'
 
-interface ModemPayEventPayload {
-  payment_intent_id?: string
-  transaction_reference?: string
-  metadata?: {
-    booking_id?: string
-    family_id?: string
-    tutor_id?: string
+interface WaychitEventPayload {
+  id?: string
+  type?: string
+  data?: {
+    id?: string
+    clientReference?: string
+    transactionReference?: string
+    paymentStatus?: string
+    paymentError?: string
+    paymentRequestStatus?: string
+    paymentSessionStatus?: string
   }
 }
 
@@ -31,10 +36,38 @@ interface BookingRow {
 
 function normalizeEventPayload(value: unknown) {
   if (!value || typeof value !== 'object') {
-    return {} as ModemPayEventPayload
+    return {} as WaychitEventPayload
   }
 
-  return value as ModemPayEventPayload
+  return value as WaychitEventPayload
+}
+
+function isWaychitSignatureValid(signatureHeader: string, rawBody: string, webhookSecret: string) {
+  const parts = signatureHeader.split(',').map((part) => part.trim()).filter(Boolean)
+  const timestamp = parts.find((part) => part.startsWith('t='))?.split('=')[1]
+  const signatures = parts
+    .filter((part) => part.startsWith('v1='))
+    .map((part) => part.split('=')[1])
+    .filter(Boolean)
+
+  if (!timestamp || signatures.length === 0) return false
+
+  const timestampSeconds = Number(timestamp)
+  if (!Number.isFinite(timestampSeconds)) return false
+
+  const ageSeconds = Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds)
+  if (ageSeconds > 5 * 60) return false
+
+  const expectedSignature = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex')
+
+  return signatures.some((signature) => {
+    const expected = Buffer.from(expectedSignature, 'hex')
+    const received = Buffer.from(signature, 'hex')
+    return expected.length === received.length && crypto.timingSafeEqual(expected, received)
+  })
 }
 
 async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminClient>, booking: BookingRow) {
@@ -63,25 +96,30 @@ async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminCl
 }
 
 export async function POST(request: Request) {
-  const modemSecret = process.env.MODEMPAY_WEBHOOK_SECRET?.trim() || ''
+  let webhookSecret = ''
 
-  if (!modemSecret) {
-    console.error('Missing MODEMPAY_WEBHOOK_SECRET.')
+  try {
+    webhookSecret = getWaychitWebhookSecret()
+  } catch (error) {
+    console.error(error)
     return NextResponse.json({ received: true })
   }
 
-  const signature = request.headers.get('x-modem-signature') || ''
+  const signature = request.headers.get('Waychit-Signature') || ''
   const rawBody = await request.text()
 
+  if (!isWaychitSignatureValid(signature, rawBody, webhookSecret)) {
+    console.error('Invalid Waychit webhook signature.')
+    return NextResponse.json({ error: 'Invalid signature.' }, { status: 401 })
+  }
+
   try {
-    const modemPay = getModemPayClient()
-    const event = modemPay.webhooks.composeEventDetails(rawBody, signature, modemSecret)
-    const payload = normalizeEventPayload(event.payload)
+    const event = normalizeEventPayload(JSON.parse(rawBody))
     const supabase = createAdminClient()
 
-    const providerPaymentId = payload.payment_intent_id?.trim() || ''
-    const metadataBookingId = payload.metadata?.booking_id?.trim() || ''
-    const metadataFamilyId = payload.metadata?.family_id?.trim() || ''
+    const providerPaymentId = event.data?.id?.trim() || ''
+    const bookingId = event.data?.clientReference?.trim() || ''
+    const transactionReference = event.data?.transactionReference?.trim() || providerPaymentId || null
 
     let paymentQuery = supabase
       .from('payments')
@@ -91,13 +129,10 @@ export async function POST(request: Request) {
 
     if (providerPaymentId) {
       paymentQuery = paymentQuery.eq('provider_payment_id', providerPaymentId)
-    } else if (metadataBookingId) {
-      paymentQuery = paymentQuery.eq('booking_id', metadataBookingId)
-      if (metadataFamilyId) {
-        paymentQuery = paymentQuery.eq('family_id', metadataFamilyId)
-      }
+    } else if (bookingId) {
+      paymentQuery = paymentQuery.eq('booking_id', bookingId)
     } else {
-      console.error('Webhook missing both payment_intent_id and booking metadata.')
+      console.error('Waychit webhook missing payment id and clientReference.')
       return NextResponse.json({ received: true })
     }
 
@@ -109,13 +144,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true })
     }
 
-    if (event.event === 'charge.succeeded') {
+    const eventType = event.type?.trim() || ''
+    const paymentStatus = event.data?.paymentStatus?.toLowerCase().trim() || ''
+    const isCompletedEvent =
+      eventType === 'payment.request.completed' ||
+      eventType === 'payment.session.completed'
+
+    if (isCompletedEvent && paymentStatus === 'succeeded') {
       if (payment.status !== 'completed') {
         const { error: paymentUpdateError } = await supabase
           .from('payments')
           .update({
             status: 'completed',
-            wave_reference: payload.transaction_reference || providerPaymentId || null,
+            wave_reference: transactionReference,
             paid_at: new Date().toISOString(),
           })
           .eq('id', payment.id)
@@ -148,14 +189,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true })
     }
 
-    if (event.event === 'charge.failed' || event.event === 'charge.cancelled') {
-      const nextStatus = event.event === 'charge.failed' ? 'failed' : 'cancelled'
-
+    if (isCompletedEvent && paymentStatus && paymentStatus !== 'succeeded') {
       const { error: paymentUpdateError } = await supabase
         .from('payments')
         .update({
-          status: nextStatus,
-          wave_reference: payload.transaction_reference || providerPaymentId || null,
+          status: 'failed',
+          wave_reference: transactionReference,
         })
         .eq('id', payment.id)
 
@@ -164,7 +203,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error('ModemPay webhook handling failed', error)
+    console.error('Waychit webhook handling failed', error)
     return NextResponse.json({ received: true })
   }
 }

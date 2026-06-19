@@ -36,7 +36,7 @@ function getPaymentIntro(status: string | null) {
     return 'This booking has already been paid for. You can now manage it from your family dashboard.'
   }
 
-  return 'Pay securely with ModemPay. After checkout, you will be returned here automatically so TutorConnect can confirm your booking.'
+  return 'Pay securely with Waychit. After checkout, you will be returned here automatically so TutorConnect can confirm your booking.'
 }
 
 export default function PaymentPage() {
@@ -205,7 +205,7 @@ export default function PaymentPage() {
 
           {booking.status === 'confirmed' && (
             <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm">
-              You are about to open secure ModemPay checkout. Once payment is completed, your booking will become active and your lesson plan will be created automatically.
+              You are about to open secure Waychit checkout. Once payment is completed, your booking will become active and your lesson plan will be created automatically.
             </div>
           )}
 
@@ -241,12 +241,12 @@ export default function PaymentPage() {
               disabled={isSubmitting || booking.status !== 'confirmed'}
               className="mt-6 w-full bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Opening secure checkout...' : `Pay ${formatMoney(booking.grand_total)} with ModemPay`}
+              {isSubmitting ? 'Opening secure checkout...' : `Pay ${formatMoney(booking.grand_total)} with Waychit`}
             </button>
           )}
 
           <p className="mt-4 text-xs text-gray-500 text-center">
-            Powered by ModemPay. In test mode, checkout may offer providers like AfriMoney, QMoney, Wave, and cards depending on account setup.
+            Powered by Waychit. Checkout may offer providers like Afrimoney, QMoney, Wave, bank transfer, and cards depending on account setup.
           </p>
         </div>
       </div>

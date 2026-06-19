@@ -185,7 +185,7 @@ export default function PaymentSuccessClient() {
           <>
             <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <h1 className="text-2xl font-bold text-gray-900">Confirming payment...</h1>
-            <p className="text-gray-600 mt-2">Please wait while ModemPay and TutorConnect confirm your booking.</p>
+            <p className="text-gray-600 mt-2">Please wait while Waychit and TutorConnect confirm your booking.</p>
           </>
         ) : confirmationState === 'failed' ? (
           <>

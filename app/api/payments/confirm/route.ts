@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getModemPayClient } from '@/lib/payments'
 
 interface PaymentRow {
   id: string
@@ -18,11 +17,6 @@ interface BookingRow {
   subjects: string[] | null
   hours_per_month: number
   status: string | null
-}
-
-interface RetrievedPaymentIntent {
-  id: string
-  status: 'initialized' | 'processing' | 'requires_payment_method' | 'successful' | 'failed' | 'cancelled'
 }
 
 async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminClient>, booking: BookingRow) {
@@ -61,7 +55,6 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient()
-    const modemPay = getModemPayClient()
 
     const { data: payment, error: paymentError } = await supabase
       .from('payments')
@@ -77,22 +70,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'missing_payment' })
     }
 
-    const paymentIntent = (await modemPay.paymentIntents.retrieve(payment.provider_payment_id)) as RetrievedPaymentIntent
-
-    if (paymentIntent.status === 'successful') {
-      if (payment.status !== 'completed') {
-        const { error: paymentUpdateError } = await supabase
-          .from('payments')
-          .update({
-            status: 'completed',
-            wave_reference: payment.wave_reference || payment.provider_payment_id,
-            paid_at: new Date().toISOString(),
-          })
-          .eq('id', payment.id)
-
-        if (paymentUpdateError) throw paymentUpdateError
-      }
-
+    if (payment.status === 'completed') {
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
         .select('id,family_id,tutor_id,subjects,hours_per_month,status')
@@ -118,20 +96,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'completed' })
     }
 
-    if (paymentIntent.status === 'failed' || paymentIntent.status === 'cancelled') {
-      const nextStatus = paymentIntent.status === 'failed' ? 'failed' : 'cancelled'
-
-      const { error: paymentUpdateError } = await supabase
-        .from('payments')
-        .update({
-          status: nextStatus,
-          wave_reference: payment.wave_reference || payment.provider_payment_id,
-        })
-        .eq('id', payment.id)
-
-      if (paymentUpdateError) throw paymentUpdateError
-
-      return NextResponse.json({ status: nextStatus })
+    if (payment.status === 'failed' || payment.status === 'cancelled') {
+      return NextResponse.json({ status: payment.status })
     }
 
     return NextResponse.json({ status: 'pending' })

@@ -1,5 +1,3 @@
-import ModemPay from 'modem-pay'
-
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '')
 }
@@ -18,12 +16,27 @@ export function getSiteUrl(request?: Request) {
   throw new Error('Missing NEXT_PUBLIC_SITE_URL. Add it before testing real payments.')
 }
 
-export function getModemPayClient() {
-  const key = process.env.MODEMPAY_SECRET_KEY?.trim()
+export function getWaychitApiKey() {
+  const key = process.env.WAYCHIT_API_KEY?.trim()
 
   if (!key) {
-    throw new Error('Missing MODEMPAY_SECRET_KEY. Add it before testing real payments.')
+    throw new Error('Missing WAYCHIT_API_KEY. Add it before testing real payments.')
   }
 
-  return new ModemPay(key)
+  return key
+}
+
+export function getWaychitWebhookSecret() {
+  const secret = process.env.WAYCHIT_WEBHOOK_SECRET?.trim()
+
+  if (!secret) {
+    throw new Error('Missing WAYCHIT_WEBHOOK_SECRET. Add it before testing real payments.')
+  }
+
+  return secret
+}
+
+export function getWaychitApiUrl(path: string) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `https://api.waychit.com/v1${normalizedPath}`
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getModemPayClient, getSiteUrl } from '@/lib/payments'
+import { getSiteUrl, getWaychitApiKey, getWaychitApiUrl } from '@/lib/payments'
 
 interface BookingRow {
   id: string
@@ -16,17 +16,17 @@ interface BookingRow {
   status: string | null
 }
 
-interface ModemPayIntentResponse {
-  status?: boolean
+interface WaychitPaymentRequestResponse {
+  success?: boolean
   message?: string
-  payment_intent_id?: string
-  intent_secret?: string
-  payment_link?: string
-  data?: {
+  paymentRequest?: {
     id?: string
-    payment_intent_id?: string
-    intent_secret?: string
-    payment_link?: string
+    amount?: number
+    currency?: string
+    status?: string
+    waychitLaunchUrl?: string
+    successRedirectUrl?: string
+    failureRedirectUrl?: string
   }
 }
 
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient()
-    const modemPay = getModemPayClient()
+    const waychitApiKey = getWaychitApiKey()
     const siteUrl = getSiteUrl(request)
 
     const { data: booking, error: bookingError } = await supabase
@@ -62,31 +62,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
     }
 
-    const paymentIntent = (await modemPay.paymentIntents.create({
-      amount: booking.grand_total,
-      currency: 'GMD',
-      title: 'TutorConnect Gambia booking payment',
-      description: `Booking ${booking.id.slice(0, 8)} for ${(booking.subjects || []).join(', ') || 'tutoring lessons'}`,
-      customer_name: booking.family_name,
-      customer_phone: booking.family_phone || undefined,
-      metadata: {
-        booking_id: booking.id,
-        family_id: booking.family_id,
-        tutor_id: booking.tutor_id,
+    const waychitResponse = await fetch(getWaychitApiUrl('/payment-requests'), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${waychitApiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
       },
-      return_url: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
-      cancel_url: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,
-      callback_url: `${siteUrl}/api/payments/webhook`,
-    })) as ModemPayIntentResponse
+      body: JSON.stringify({
+        amount: booking.grand_total,
+        description: `Booking ${booking.id.slice(0, 8)} for ${(booking.subjects || []).join(', ') || 'tutoring lessons'}`,
+        clientReference: booking.id,
+        successRedirectUrl: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
+        failureRedirectUrl: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,
+      }),
+    })
 
-    const providerPaymentId =
-      paymentIntent.payment_intent_id || paymentIntent.data?.id || paymentIntent.data?.payment_intent_id || ''
-    const intentSecret = paymentIntent.intent_secret || paymentIntent.data?.intent_secret || ''
-    const paymentLink = paymentIntent.payment_link || paymentIntent.data?.payment_link || ''
+    const paymentRequest = (await waychitResponse.json()) as WaychitPaymentRequestResponse
 
-    if (!intentSecret || !paymentLink) {
-      console.error('Unexpected ModemPay payment intent response', paymentIntent)
-      throw new Error(paymentIntent.message || 'Could not create ModemPay checkout session.')
+    if (!waychitResponse.ok || !paymentRequest.success) {
+      console.error('Waychit payment request failed', paymentRequest)
+      throw new Error(paymentRequest.message || 'Could not create Waychit payment request.')
+    }
+
+    const providerPaymentId = paymentRequest.paymentRequest?.id || ''
+    const paymentLink = paymentRequest.paymentRequest?.waychitLaunchUrl || ''
+
+    if (!providerPaymentId || !paymentLink) {
+      console.error('Unexpected Waychit payment request response', paymentRequest)
+      throw new Error(paymentRequest.message || 'Could not create Waychit checkout session.')
     }
 
     const { error: paymentInsertError } = await supabase.from('payments').insert({
@@ -95,9 +99,9 @@ export async function POST(request: Request) {
       amount: booking.monthly_total,
       service_fee: booking.service_fee,
       total: booking.grand_total,
-      payment_method: 'modempay',
+      payment_method: 'waychit',
       status: 'pending',
-      intent_secret: intentSecret,
+      intent_secret: providerPaymentId,
       provider_payment_id: providerPaymentId || null,
     })
 
