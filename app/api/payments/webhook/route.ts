@@ -70,6 +70,10 @@ function isWaychitSignatureValid(signatureHeader: string, rawBody: string, webho
   })
 }
 
+function getBookingIdFromClientReference(clientReference: string) {
+  return clientReference.split(':attempt:')[0]?.trim() || ''
+}
+
 async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminClient>, booking: BookingRow) {
   const { count, error: lessonsCountError } = await supabase
     .from('lessons')
@@ -118,7 +122,8 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
 
     const providerPaymentId = event.data?.id?.trim() || ''
-    const bookingId = event.data?.clientReference?.trim() || ''
+    const clientReference = event.data?.clientReference?.trim() || ''
+    const bookingId = getBookingIdFromClientReference(clientReference)
     const transactionReference = event.data?.transactionReference?.trim() || providerPaymentId || null
 
     let paymentQuery = supabase

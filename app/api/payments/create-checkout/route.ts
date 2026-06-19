@@ -30,6 +30,10 @@ interface WaychitPaymentRequestResponse {
   }
 }
 
+function createClientReference(bookingId: string) {
+  return `${bookingId}:attempt:${Date.now()}`
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -62,6 +66,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
     }
 
+    const clientReference = createClientReference(booking.id)
+
     const waychitResponse = await fetch(getWaychitApiUrl('/payment-requests'), {
       method: 'POST',
       headers: {
@@ -72,7 +78,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         amount: booking.grand_total,
         description: `Booking ${booking.id.slice(0, 8)} for ${(booking.subjects || []).join(', ') || 'tutoring lessons'}`,
-        clientReference: booking.id,
+        clientReference,
         successRedirectUrl: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
         failureRedirectUrl: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,
       }),
@@ -101,7 +107,7 @@ export async function POST(request: Request) {
       total: booking.grand_total,
       payment_method: 'waychit',
       status: 'pending',
-      intent_secret: providerPaymentId,
+      intent_secret: clientReference,
       provider_payment_id: providerPaymentId || null,
     })
 

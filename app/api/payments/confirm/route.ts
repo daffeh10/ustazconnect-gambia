@@ -56,6 +56,45 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
 
+    const { data: completedPayment, error: completedPaymentError } = await supabase
+      .from('payments')
+      .select('id,booking_id,family_id,status,provider_payment_id,wave_reference')
+      .eq('booking_id', bookingId)
+      .eq('family_id', familyId)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle<PaymentRow>()
+
+    if (completedPaymentError) throw completedPaymentError
+
+    if (completedPayment) {
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select('id,family_id,tutor_id,subjects,hours_per_month,status')
+        .eq('id', bookingId)
+        .eq('family_id', familyId)
+        .maybeSingle<BookingRow>()
+
+      if (bookingError) throw bookingError
+      if (!booking) {
+        return NextResponse.json({ error: 'Booking not found.' }, { status: 404 })
+      }
+
+      if (booking.status !== 'active') {
+        const { error: bookingUpdateError } = await supabase
+          .from('bookings')
+          .update({ status: 'active' })
+          .eq('id', booking.id)
+
+        if (bookingUpdateError) throw bookingUpdateError
+      }
+
+      await ensureLessonsForBooking(supabase, booking)
+
+      return NextResponse.json({ status: 'completed' })
+    }
+
     const { data: payment, error: paymentError } = await supabase
       .from('payments')
       .select('id,booking_id,family_id,status,provider_payment_id,wave_reference')
