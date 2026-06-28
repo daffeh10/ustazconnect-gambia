@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getWaychitWebhookSecret } from '@/lib/payments'
+import { activateBookingAndEnsureLessons, type PaymentBookingRow } from '@/lib/payment-fulfillment'
 
 interface WaychitEventPayload {
   id?: string
@@ -23,15 +24,7 @@ interface PaymentRow {
   family_id: string | null
   status: string | null
   provider_payment_id: string | null
-}
-
-interface BookingRow {
-  id: string
-  family_id: string | null
-  tutor_id: string
-  subjects: string[] | null
-  hours_per_month: number
-  status: string | null
+  intent_secret: string | null
 }
 
 function normalizeEventPayload(value: unknown) {
@@ -74,31 +67,6 @@ function getBookingIdFromClientReference(clientReference: string) {
   return clientReference.split(':attempt:')[0]?.trim() || ''
 }
 
-async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminClient>, booking: BookingRow) {
-  const { count, error: lessonsCountError } = await supabase
-    .from('lessons')
-    .select('id', { count: 'exact', head: true })
-    .eq('booking_id', booking.id)
-
-  if (lessonsCountError) throw lessonsCountError
-  if (count) return
-
-  const totalLessons = Math.floor(booking.hours_per_month / 2)
-  const lessonRows = Array.from({ length: totalLessons }, (_, index) => ({
-    booking_id: booking.id,
-    tutor_id: booking.tutor_id,
-    family_id: booking.family_id,
-    lesson_number: index + 1,
-    subject: booking.subjects?.[0] || null,
-    status: 'scheduled',
-  }))
-
-  if (lessonRows.length === 0) return
-
-  const { error: lessonInsertError } = await supabase.from('lessons').insert(lessonRows)
-  if (lessonInsertError) throw lessonInsertError
-}
-
 export async function POST(request: Request) {
   let webhookSecret = ''
 
@@ -106,7 +74,7 @@ export async function POST(request: Request) {
     webhookSecret = getWaychitWebhookSecret()
   } catch (error) {
     console.error(error)
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ error: 'Webhook is not configured.' }, { status: 500 })
   }
 
   const signature = request.headers.get('Waychit-Signature') || ''
@@ -126,27 +94,55 @@ export async function POST(request: Request) {
     const bookingId = getBookingIdFromClientReference(clientReference)
     const transactionReference = event.data?.transactionReference?.trim() || providerPaymentId || null
 
-    let paymentQuery = supabase
-      .from('payments')
-      .select('id,booking_id,family_id,status,provider_payment_id')
-      .order('created_at', { ascending: false })
-      .limit(1)
-
-    if (providerPaymentId) {
-      paymentQuery = paymentQuery.eq('provider_payment_id', providerPaymentId)
-    } else if (bookingId) {
-      paymentQuery = paymentQuery.eq('booking_id', bookingId)
-    } else {
+    if (!providerPaymentId && !clientReference && !bookingId) {
       console.error('Waychit webhook missing payment id and clientReference.')
       return NextResponse.json({ received: true })
     }
 
-    const { data: payment, error: paymentError } = await paymentQuery.maybeSingle<PaymentRow>()
+    let payment: PaymentRow | null = null
 
-    if (paymentError) throw paymentError
+    if (providerPaymentId) {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id,booking_id,family_id,status,provider_payment_id,intent_secret')
+        .eq('provider_payment_id', providerPaymentId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<PaymentRow>()
+
+      if (error) throw error
+      payment = data
+    }
+
+    if (!payment && clientReference) {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id,booking_id,family_id,status,provider_payment_id,intent_secret')
+        .eq('intent_secret', clientReference)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<PaymentRow>()
+
+      if (error) throw error
+      payment = data
+    }
+
+    if (!payment && bookingId) {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id,booking_id,family_id,status,provider_payment_id,intent_secret')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<PaymentRow>()
+
+      if (error) throw error
+      payment = data
+    }
+
     if (!payment?.booking_id) {
       console.error('No matching payment row found for webhook event.')
-      return NextResponse.json({ received: true })
+      return NextResponse.json({ error: 'Matching payment row not found.' }, { status: 500 })
     }
 
     const eventType = event.type?.trim() || ''
@@ -173,24 +169,15 @@ export async function POST(request: Request) {
         .from('bookings')
         .select('id,family_id,tutor_id,subjects,hours_per_month,status')
         .eq('id', payment.booking_id)
-        .maybeSingle<BookingRow>()
+        .maybeSingle<PaymentBookingRow>()
 
       if (bookingError) throw bookingError
       if (!booking) {
         console.error('Matching booking row not found for webhook event.')
-        return NextResponse.json({ received: true })
+        return NextResponse.json({ error: 'Matching booking row not found.' }, { status: 500 })
       }
 
-      if (booking.status !== 'active') {
-        const { error: bookingUpdateError } = await supabase
-          .from('bookings')
-          .update({ status: 'active', updated_at: new Date().toISOString() })
-          .eq('id', booking.id)
-
-        if (bookingUpdateError) throw bookingUpdateError
-      }
-
-      await ensureLessonsForBooking(supabase, booking)
+      await activateBookingAndEnsureLessons(supabase, booking)
       return NextResponse.json({ received: true })
     }
 
@@ -209,6 +196,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error('Waychit webhook handling failed', error)
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ error: 'Webhook processing failed.' }, { status: 500 })
   }
 }

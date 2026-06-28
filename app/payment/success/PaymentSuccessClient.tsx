@@ -41,7 +41,7 @@ export default function PaymentSuccessClient() {
           const confirmResponse = await fetch('/api/payments/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bookingId, familyId: user.id }),
+            body: JSON.stringify({ bookingId }),
           })
 
           const confirmPayload = (await confirmResponse.json()) as {
@@ -148,7 +148,7 @@ export default function PaymentSuccessClient() {
       const response = await fetch('/api/payments/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId, familyId: user.id }),
+        body: JSON.stringify({ bookingId }),
       })
 
       const payload = (await response.json()) as { status?: string; error?: string }

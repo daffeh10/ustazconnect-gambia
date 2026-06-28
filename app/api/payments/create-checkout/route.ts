@@ -1,5 +1,7 @@
+import crypto from 'crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getSiteUrl, getWaychitApiKey, getWaychitApiUrl } from '@/lib/payments'
 
 interface BookingRow {
@@ -31,7 +33,11 @@ interface WaychitPaymentRequestResponse {
 }
 
 function createClientReference(bookingId: string) {
-  return `${bookingId}:attempt:${Date.now()}`
+  return `${bookingId}:attempt:${crypto.randomUUID()}`
+}
+
+function isValidPaymentAmount(amount: number) {
+  return Number.isFinite(amount) && amount >= 5
 }
 
 export async function POST(request: Request) {
@@ -41,6 +47,17 @@ export async function POST(request: Request) {
 
     if (!bookingId) {
       return NextResponse.json({ error: 'Missing bookingId.' }, { status: 400 })
+    }
+
+    const authSupabase = await createServerClient()
+    const {
+      data: { user },
+      error: userError,
+    } = await authSupabase.auth.getUser()
+
+    if (userError) throw userError
+    if (!user) {
+      return NextResponse.json({ error: 'Please sign in before starting payment.' }, { status: 401 })
     }
 
     const supabase = createAdminClient()
@@ -53,6 +70,7 @@ export async function POST(request: Request) {
         'id,family_id,tutor_id,family_name,family_phone,subjects,hours_per_month,monthly_total,service_fee,grand_total,status'
       )
       .eq('id', bookingId)
+      .eq('family_id', user.id)
       .maybeSingle<BookingRow>()
 
     if (bookingError) throw bookingError
@@ -64,6 +82,13 @@ export async function POST(request: Request) {
     }
     if (booking.status !== 'confirmed') {
       return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
+    }
+    if (!isValidPaymentAmount(booking.grand_total)) {
+      console.error('Invalid booking total for Waychit checkout.', {
+        bookingId: booking.id,
+        grandTotal: booking.grand_total,
+      })
+      return NextResponse.json({ error: 'This booking cannot be paid right now.' }, { status: 400 })
     }
 
     const clientReference = createClientReference(booking.id)
@@ -88,7 +113,10 @@ export async function POST(request: Request) {
 
     if (!waychitResponse.ok || !paymentRequest.success) {
       console.error('Waychit payment request failed', paymentRequest)
-      throw new Error(paymentRequest.message || 'Could not create Waychit payment request.')
+      return NextResponse.json(
+        { error: 'Could not start payment. Please try again in a moment.' },
+        { status: 502 }
+      )
     }
 
     const providerPaymentId = paymentRequest.paymentRequest?.id || ''
@@ -96,7 +124,10 @@ export async function POST(request: Request) {
 
     if (!providerPaymentId || !paymentLink) {
       console.error('Unexpected Waychit payment request response', paymentRequest)
-      throw new Error(paymentRequest.message || 'Could not create Waychit checkout session.')
+      return NextResponse.json(
+        { error: 'Could not start payment. Please try again in a moment.' },
+        { status: 502 }
+      )
     }
 
     const { error: paymentInsertError } = await supabase.from('payments').insert({
@@ -119,12 +150,6 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('create-checkout route failed', error)
 
-    let message = 'Could not create payment session.'
-
-    if (error instanceof Error && error.message.trim()) {
-      message = error.message
-    }
-
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Could not create payment session.' }, { status: 500 })
   }
 }

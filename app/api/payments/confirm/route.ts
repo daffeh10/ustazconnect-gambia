@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { activateBookingAndEnsureLessons, type PaymentBookingRow } from '@/lib/payment-fulfillment'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 
 interface PaymentRow {
   id: string
@@ -10,51 +12,28 @@ interface PaymentRow {
   wave_reference: string | null
 }
 
-interface BookingRow {
-  id: string
-  family_id: string | null
-  tutor_id: string
-  subjects: string[] | null
-  hours_per_month: number
-  status: string | null
-}
-
-async function ensureLessonsForBooking(supabase: ReturnType<typeof createAdminClient>, booking: BookingRow) {
-  const { count, error: lessonsCountError } = await supabase
-    .from('lessons')
-    .select('id', { count: 'exact', head: true })
-    .eq('booking_id', booking.id)
-
-  if (lessonsCountError) throw lessonsCountError
-  if (count) return
-
-  const totalLessons = Math.floor(booking.hours_per_month / 2)
-  const lessonRows = Array.from({ length: totalLessons }, (_, index) => ({
-    booking_id: booking.id,
-    tutor_id: booking.tutor_id,
-    family_id: booking.family_id,
-    lesson_number: index + 1,
-    subject: booking.subjects?.[0] || null,
-    status: 'scheduled',
-  }))
-
-  if (lessonRows.length === 0) return
-
-  const { error: lessonInsertError } = await supabase.from('lessons').insert(lessonRows)
-  if (lessonInsertError) throw lessonInsertError
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json()
     const bookingId = typeof body?.bookingId === 'string' ? body.bookingId.trim() : ''
-    const familyId = typeof body?.familyId === 'string' ? body.familyId.trim() : ''
 
-    if (!bookingId || !familyId) {
+    if (!bookingId) {
       return NextResponse.json({ error: 'Missing booking confirmation details.' }, { status: 400 })
     }
 
+    const authSupabase = await createServerClient()
+    const {
+      data: { user },
+      error: userError,
+    } = await authSupabase.auth.getUser()
+
+    if (userError) throw userError
+    if (!user) {
+      return NextResponse.json({ error: 'Please sign in to confirm this payment.' }, { status: 401 })
+    }
+
     const supabase = createAdminClient()
+    const familyId = user.id
 
     const { data: completedPayment, error: completedPaymentError } = await supabase
       .from('payments')
@@ -74,23 +53,14 @@ export async function POST(request: Request) {
         .select('id,family_id,tutor_id,subjects,hours_per_month,status')
         .eq('id', bookingId)
         .eq('family_id', familyId)
-        .maybeSingle<BookingRow>()
+        .maybeSingle<PaymentBookingRow>()
 
       if (bookingError) throw bookingError
       if (!booking) {
         return NextResponse.json({ error: 'Booking not found.' }, { status: 404 })
       }
 
-      if (booking.status !== 'active') {
-        const { error: bookingUpdateError } = await supabase
-          .from('bookings')
-          .update({ status: 'active' })
-          .eq('id', booking.id)
-
-        if (bookingUpdateError) throw bookingUpdateError
-      }
-
-      await ensureLessonsForBooking(supabase, booking)
+      await activateBookingAndEnsureLessons(supabase, booking)
 
       return NextResponse.json({ status: 'completed' })
     }
@@ -115,23 +85,14 @@ export async function POST(request: Request) {
         .select('id,family_id,tutor_id,subjects,hours_per_month,status')
         .eq('id', bookingId)
         .eq('family_id', familyId)
-        .maybeSingle<BookingRow>()
+        .maybeSingle<PaymentBookingRow>()
 
       if (bookingError) throw bookingError
       if (!booking) {
         return NextResponse.json({ error: 'Booking record not found.' }, { status: 404 })
       }
 
-      if (booking.status !== 'active') {
-        const { error: bookingUpdateError } = await supabase
-          .from('bookings')
-          .update({ status: 'active', updated_at: new Date().toISOString() })
-          .eq('id', booking.id)
-
-        if (bookingUpdateError) throw bookingUpdateError
-      }
-
-      await ensureLessonsForBooking(supabase, booking)
+      await activateBookingAndEnsureLessons(supabase, booking)
       return NextResponse.json({ status: 'completed' })
     }
 
