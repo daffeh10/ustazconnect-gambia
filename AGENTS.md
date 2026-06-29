@@ -1,8 +1,8 @@
 # TutorConnect Gambia — Agent Instructions
 
-> This file is auto-loaded by Claude Code every session.
-> **It is identical to `AGENTS.md`** (which Abdul uses with Codex). If you change
-> one, change the other — they must stay in sync.
+> This file is used with Codex. **It is identical to `CLAUDE.md`** (which Claude
+> Code auto-loads every session). If you change one, change the other — they must
+> stay in sync.
 > Keep it short and TRUE. Roadmap/feature work lives in `TASKS.md`, not here.
 > Last updated: 2026-06-29.
 

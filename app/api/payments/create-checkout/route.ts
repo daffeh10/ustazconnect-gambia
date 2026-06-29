@@ -83,12 +83,69 @@ export async function POST(request: Request) {
     if (booking.status !== 'confirmed') {
       return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
     }
-    if (!isValidPaymentAmount(booking.grand_total)) {
-      console.error('Invalid booking total for Waychit checkout.', {
+
+    // Never trust monetary values that originated in the browser. The booking row
+    // is inserted client-side, so its amounts could be tampered with. Recompute
+    // the charge from the tutor's authoritative hourly rate and only ever charge
+    // that server-computed amount.
+    const { data: tutor, error: tutorError } = await supabase
+      .from('tutor_profiles')
+      .select('hourly_rate')
+      .eq('id', booking.tutor_id)
+      .maybeSingle<{ hourly_rate: number | null }>()
+
+    if (tutorError) throw tutorError
+    if (!tutor || typeof tutor.hourly_rate !== 'number' || tutor.hourly_rate <= 0) {
+      return NextResponse.json({ error: 'This tutor cannot be booked right now.' }, { status: 400 })
+    }
+
+    const hoursPerMonth = booking.hours_per_month
+    if (!Number.isInteger(hoursPerMonth) || hoursPerMonth <= 0 || hoursPerMonth > 400) {
+      return NextResponse.json({ error: 'This booking has invalid lesson hours.' }, { status: 400 })
+    }
+
+    // Authoritative amounts — must mirror the client formula (3% service fee).
+    const monthlyTotal = hoursPerMonth * tutor.hourly_rate
+    const serviceFee = Math.round(monthlyTotal * 0.03)
+    const grandTotal = monthlyTotal + serviceFee
+
+    if (!isValidPaymentAmount(grandTotal)) {
+      console.error('Invalid recomputed booking total for Waychit checkout.', {
         bookingId: booking.id,
-        grandTotal: booking.grand_total,
+        grandTotal,
       })
       return NextResponse.json({ error: 'This booking cannot be paid right now.' }, { status: 400 })
+    }
+
+    // If the stored totals disagree with the authoritative amount, repair the
+    // booking before charging so payment records stay consistent, and log it as
+    // a possible tampering attempt.
+    if (
+      booking.monthly_total !== monthlyTotal ||
+      booking.service_fee !== serviceFee ||
+      booking.grand_total !== grandTotal
+    ) {
+      console.error('Booking total mismatch detected; repairing before charge.', {
+        bookingId: booking.id,
+        stored: {
+          monthlyTotal: booking.monthly_total,
+          serviceFee: booking.service_fee,
+          grandTotal: booking.grand_total,
+        },
+        authoritative: { monthlyTotal, serviceFee, grandTotal },
+      })
+
+      const { error: repairError } = await supabase
+        .from('bookings')
+        .update({
+          hourly_rate: tutor.hourly_rate,
+          monthly_total: monthlyTotal,
+          service_fee: serviceFee,
+          grand_total: grandTotal,
+        })
+        .eq('id', booking.id)
+
+      if (repairError) throw repairError
     }
 
     const clientReference = createClientReference(booking.id)
@@ -101,7 +158,7 @@ export async function POST(request: Request) {
         Accept: 'application/json',
       },
       body: JSON.stringify({
-        amount: booking.grand_total,
+        amount: grandTotal,
         description: `Booking ${booking.id.slice(0, 8)} for ${(booking.subjects || []).join(', ') || 'tutoring lessons'}`,
         clientReference,
         successRedirectUrl: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
@@ -133,9 +190,9 @@ export async function POST(request: Request) {
     const { error: paymentInsertError } = await supabase.from('payments').insert({
       booking_id: booking.id,
       family_id: booking.family_id,
-      amount: booking.monthly_total,
-      service_fee: booking.service_fee,
-      total: booking.grand_total,
+      amount: monthlyTotal,
+      service_fee: serviceFee,
+      total: grandTotal,
       payment_method: 'waychit',
       status: 'pending',
       intent_secret: clientReference,

@@ -1,438 +1,185 @@
-# TutorConnect Gambia — Phase 1 & 2 Task List
+# TutorConnect Gambia — Roadmap
 
-Work through these tasks ONE AT A TIME.
-After each task, stop and tell me what you did and what to test.
-Do not move to the next task until I confirm the current one works.
+Working task list. Read `CLAUDE.md` (or `AGENTS.md` for Codex) first.
+Pick **one task**, audit → plan → implement → verify → ship. One concern per commit.
+Last updated: 2026-06-29.
 
----
-
-## PHASE 1 — Fix & Rebrand
-
----
-
-### TASK 1.1 — Create lib/constants.ts
-
-Create the file `lib/constants.ts` with all subjects and locations.
-Do not modify any other file yet.
-
-The file must export:
-- SUBJECT_CATEGORIES — array of { category, subjects[] }
-- ALL_SUBJECTS — flat array of every subject
-- LOCATION_REGIONS — array of { region, locations[] }
-- ALL_LOCATIONS — flat array of every location
-
-Subjects to include, grouped:
-
-Religious Education: Quran Reading, Tajweed, Hifz (Memorisation), Arabic Language, Islamic Studies
-
-Mathematics: Basic Mathematics, General Mathematics, Additional Mathematics, Further Mathematics, Statistics
-
-Sciences: Physics, Chemistry, Biology, Agricultural Science, Computer Science
-
-Languages: English Language, English Literature, French, Arabic
-
-Humanities: Economics, Geography, History, Government, Civic Education, Social Studies
-
-Business: Accounting, Commerce, Business Studies
-
-Exam Preparation: WASSCE Prep, NAQEB Prep, University Entrance
-
-Locations to include, grouped by region:
-
-Greater Banjul Area: Banjul, Serrekunda, Bakau, Fajara, Kololi, Kotu, Bijilo, Brufut,
-Sukuta, Brusubi, Kerr Serign, Tallinding, Bundung, Latrikunda, Pipeline, Tabokoto, Kanifing
-
-West Coast Region: Brikama, Gunjur, Sanyang, Kartong, Tanji, Batokunku, Ghana Town, Lamin
-
-North Bank Region: Barra, Essau, Kerewan, Farafenni
-
-Lower River Region: Mansakonko, Soma, Pakalinding
-
-Central River Region: Janjanbureh, Kuntaur, Bansang
-
-Upper River Region: Basse Santa Su, Fatoto
-
-After creating the file, tell me to check it in VS Code before continuing.
+**Status labels:** `[NEXT]` highest priority · `[OPEN]` worthwhile soon ·
+`[LATER]` valid but not now · `[MANUAL]` operational/business · `[DONE]`.
 
 ---
 
-### TASK 1.2 — Update find-ustaz/page.tsx to use grouped dropdowns
+## 0. Already built — do NOT rebuild (audited 2026-06-29)
 
-Update `app/find-ustaz/page.tsx` to:
-1. Import LOCATION_REGIONS and SUBJECT_CATEGORIES from @/lib/constants
-2. Remove the hardcoded LOCATIONS and SUBJECTS arrays at the top of the file
-3. Replace the location <select> with a grouped version using <optgroup> for each region
-4. Replace the subject <select> with a grouped version using <optgroup> for each category
-5. Keep all existing filter logic exactly as it is (do not touch the filter code)
-6. Keep all existing card rendering exactly as it is
-
-The grouped select pattern to use:
-<select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} ...>
-  <option value="">All Locations</option>
-  {LOCATION_REGIONS.map((region) => (
-    <optgroup key={region.region} label={region.region}>
-      {region.locations.map((loc) => (
-        <option key={loc} value={loc}>{loc}</option>
-      ))}
-    </optgroup>
-  ))}
-</select>
-
-Do the same pattern for subjects using SUBJECT_CATEGORIES.
-
-After the change, tell me to:
-1. Run: killall -9 node && rm -rf .next && npm run dev
-2. Go to http://localhost:3000/find-ustaz
-3. Open the Location dropdown — I should see sections like "Greater Banjul Area" with locations listed under it
-4. Open the Subject dropdown — I should see sections like "Mathematics" with subjects under it
+These exist and work; preserve them:
+- Open browsing, tutor directory (`/find-tutor`), tutor profiles (`/tutor/[id]`),
+  searchable location + subject inputs (`SearchableLocationInput`/`SearchableSubjectInput`).
+- Deferred account creation at booking; family + tutor dashboards; admin panel
+  (overview, tutors, documents, reports, payouts, analytics).
+- Real Waychit payment + webhook + escrow activation + auto lesson creation.
+- Tutor verification tiers (`Basic`/`Profile Reviewed`/`Qualification Verified`),
+  90-day Basic grace, public name privacy (`Fatou J.`), trust-column DB trigger.
+- **Reviews require a completed lesson** (verified-booking-only) — done.
+- ID/document upload (`tutor_documents`, incl. `national_id`), tutor code-of-conduct
+  page, report flow (`reports`), refund/dispute **policy text**.
+- Basic admin analytics (signups, subjects, locations, revenue, completed lessons).
+- Payouts table + admin payouts page. Sitemap, robots, Search Console, custom domain.
+- Security fixes (2026-06-29): server-side amount recomputation; RLS trust-column
+  trigger; `inquiries` public-read removed. See `supabase/rls_policies.sql`.
 
 ---
 
-### TASK 1.3 — Update LocationSearch component to use grouped locations
+## Priority order
 
-Update `app/components/LocationSearch.tsx` to:
-1. Import LOCATION_REGIONS from @/lib/constants
-2. Remove the hardcoded LOCATIONS array inside the file
-3. Replace the flat <option> list with grouped <optgroup> sections (same pattern as Task 1.2)
-
-After the change, tell me to:
-1. Go to http://localhost:3000
-2. Open the location dropdown in the hero section — it should show grouped regions
-3. Pick any location, click the button — I should land on /find-ustaz with that location pre-selected and filtered
+`T0.1 → T0.2 → T0.3` (foundations) → `P6 safety floor` → `P1 booking model` →
+`P2 trial` → `P3 emails wired` → `P5 diaspora` → moat gaps (ongoing).
 
 ---
 
-### TASK 1.4 — Rebrand text across the site
+## Tier 0 — Foundations (unblock everything else)
 
-Do a careful find-and-replace in these specific files only.
-Show me the list of changes you plan to make BEFORE making them, and wait for my approval.
+### T0.1 — Server-side pricing/fee engine `[NEXT]`
+**Why:** money is currently computed in the browser (security risk, already patched
+in checkout) and fee rules are scattered. Centralize so fees can change per segment
+(local / diaspora / trial) without touching client code.
+**Do:** a single server module (e.g. `lib/pricing.ts`) that computes monthly total,
+3% family fee, 5% commission, and trial (D150, 0% commission) from authoritative
+tutor rates/packages. All payment routes call it. Client shows estimates only.
+**Acceptance:** no monetary value is trusted from the client anywhere; checkout,
+confirm, and (future) trial/diaspora all use one module; build + lint pass.
 
-Files to update:
-- app/page.tsx
-- app/find-ustaz/page.tsx
-- app/components/Header.tsx (if it exists)
-- app/components/Footer.tsx (if it exists — check first)
-- app/layout.tsx
+### T0.2 — Email + notification infrastructure `[NEXT]`
+**Why:** no transactional emails exist today; needed by P2/P3/P5.
+**Do:** integrate **Resend free tier** (3,000/mo, $0) via `lib/email.ts` with plain,
+human, branded templates (reply-to `tutorconnectgambia@gmail.com`). Add **WhatsApp
+click-to-chat links** (free, no API) as the channel for *local* users, who mostly
+don't use email. Respect PDPP (transactional only; no marketing without consent).
+**Acceptance:** a test email sends and lands in inbox (not spam); a reusable
+`sendEmail()` helper exists; WhatsApp link helper exists; no new recurring cost.
+**Note:** needs `RESEND_API_KEY` env var (ask Abdul before editing `.env.local`).
 
-Replacements to make:
-- "UstazConnect" → "TutorConnect Gambia"
-- "Find an Ustaz" → "Find a Tutor"
-- "Find Ustaz" → "Find Tutor"  (only in navigation links, not in URLs)
-- "Become an Ustaz" → "Become a Tutor"
-- "Register as an Ustaz" → "Register as a Tutor"
-- "Ustaz Login" → "Tutor Login"
-- "Browse our verified Quran teachers" → "Browse our verified tutors"
-- "Loading ustazs..." → "Loading tutors..."
-- "ustaz" / "ustazs" → "tutor" / "tutors"  (only in displayed text, NOT in variable names or URLs)
-
-Do NOT change:
-- Any URL paths (/find-ustaz, /register-ustaz) — these stay the same for now
-- Any variable names (ustaz, ustazs, setUstazs etc.)
-- The Supabase table name (ustaz_profiles)
-- Any import paths
-
-Update app/layout.tsx metadata to:
-title: 'TutorConnect Gambia | Find Qualified Tutors Near You'
-description: 'The Gambia\'s #1 tutoring marketplace. Find verified tutors for Maths, Science, English, Quran, and more — in your neighbourhood.'
-
-After showing me the planned changes and I approve, make them.
-Then tell me to check the site visually at http://localhost:3000.
+### T0.3 — Admin roles + owner-only admin management + audit log `[NEXT]`
+**Why:** co-founders on the ground need to approve tutors; only Abdul should
+grant/revoke admin; multi-admin needs accountability.
+**Do:** roles on `admin_users` (`owner`, `admin`, `quran_verifier`), `is_active`,
+`created_by`. Owner-only `/admin/admins` page + API to add/disable admins and set
+roles (Abdul seeded as `owner`). Add an **admin audit log** (who approved/rejected
+which tutor; who changed admin access). Gate everything by role in the route +
+service-role writes.
+**Acceptance:** Abdul can add/revoke a co-founder admin; a non-owner admin cannot;
+co-founder can approve tutors; every approval/rejection + admin change is logged.
 
 ---
 
-### TASK 1.5 — Update the homepage hero section text
-
-Update the hero headline and description in `app/page.tsx` to:
-
-Headline:
-"Find a Trusted Tutor
-in The Gambia"
-(keep the two-line format with the second line in emerald-600)
-
-Description:
-"TutorConnect Gambia connects students with qualified tutors for in-home lessons
-across The Gambia — covering every subject from Quran to Maths, Physics, English,
-Economics, and more."
-
-Do not change anything else on the page.
-
----
-
-## END OF PHASE 1
-
-Once all Phase 1 tasks are confirmed working, tell me and I will give the go-ahead for Phase 2.
+## P1 — Booking & pricing structure `[OPEN]`
+**Why:** "hours per month" doesn't match how Gambians buy tutoring; Quran tutors
+charge flat monthly.
+**Do:** offer BOTH:
+- **Hourly option** (keep existing).
+- **Flat-monthly packages** the tutor defines — each package specifies
+  **frequency (1×/week up to daily) and hours per visit**, at a flat monthly price.
+  Minimum once a week; up to every day.
+- **Group / sibling pricing** (multiple children sharing one tutor).
+- Gambian-context extras: term-aligned WASSCE/NAQEB intensives; Ramadan handling
+  for Quran.
+All totals computed by the T0.1 engine; hours shown for clarity, not as the price basis.
+**Acceptance:** a tutor can publish hourly + ≥1 flat-monthly package (with frequency
++ hours/visit); a family can book either; group pricing works; amounts are correct
+and server-computed. Validate the model with 2–3 real tutors before wide rollout.
 
 ---
 
-## PHASE 2 — Authentication & Profiles
-
-IMPORTANT: Do not start any Phase 2 task until I explicitly say "start Phase 2".
-
----
-
-### TASK 2.1 — Install Supabase SSR package
-
-STOP — ask me before running this.
-Tell me to run this in the terminal and wait for my confirmation:
-
-npm install @supabase/ssr
-
-After I confirm it's installed, proceed to Task 2.2.
-
----
-
-### TASK 2.2 — Create Supabase client files
-
-Create two new files:
-
-FILE 1: lib/supabase/client.ts
-Used in browser pages (files with 'use client' at top).
-
-'use client'
-import { createBrowserClient } from '@supabase/ssr'
-
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-}
-
-FILE 2: lib/supabase/server.ts
-Used in server components and API routes.
-
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-export async function createClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-}
-
-Do not touch lib/supabase.ts — leave it exactly as is.
-The existing code still uses it and we do not want to break anything.
+## P2 — Free first session / D150 trial `[OPEN]`
+**Why:** lowers the family's trust barrier to try a tutor while protecting the
+tutor's time/transport.
+**Model:** first session is a **paid intro/assessment** (30–45 min), **D150
+transport, no commission**, paid to us via Waychit and **held in escrow**. Tutor
+attends → family confirms (or auto-confirms after 48h) → we release D150 to the
+tutor. After it, the family decides whether to book monthly.
+**Guardrails:** one trial per family–tutor pair; **tutor no-show → auto-refund the
+family**; decide who absorbs the Waychit fee (recommend family pays D150 + fee so
+tutor nets a clean D150).
+**Acceptance:** a family can book + pay a trial; tutor sees it; confirm releases
+D150; no-show refunds the family; commission is never charged on a trial; emails
+fire (P3). Depends on T0.1 + T0.2.
 
 ---
 
-### TASK 2.3 — Show me the database SQL to run
-
-Do NOT run any SQL yourself.
-Write out the following SQL and tell me to go to Supabase → SQL Editor → New Query and run it myself.
-
-SQL to show me:
-
--- TUTOR PROFILES TABLE
-CREATE TABLE IF NOT EXISTS tutor_profiles (
-  id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id             UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name                TEXT NOT NULL,
-  email               TEXT UNIQUE NOT NULL,
-  phone               TEXT,
-  location            TEXT,
-  subjects            TEXT[] DEFAULT '{}',
-  experience_years    INTEGER DEFAULT 0,
-  hourly_rate         INTEGER DEFAULT 0,
-  bio                 TEXT,
-  education           TEXT,
-  profile_photo_url   TEXT,
-  verification_status TEXT DEFAULT 'basic',
-  is_active           BOOLEAN DEFAULT true,
-  is_approved         BOOLEAN DEFAULT false,
-  average_rating      DECIMAL DEFAULT 0,
-  total_lessons       INTEGER DEFAULT 0,
-  created_at          TIMESTAMPTZ DEFAULT now(),
-  updated_at          TIMESTAMPTZ DEFAULT now()
-);
-
--- FAMILY PROFILES TABLE
-CREATE TABLE IF NOT EXISTS family_profiles (
-  id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id      UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  parent_name  TEXT NOT NULL,
-  email        TEXT UNIQUE NOT NULL,
-  phone        TEXT,
-  location     TEXT,
-  budget_min   INTEGER DEFAULT 0,
-  budget_max   INTEGER DEFAULT 0,
-  created_at   TIMESTAMPTZ DEFAULT now(),
-  updated_at   TIMESTAMPTZ DEFAULT now()
-);
-
--- ROW LEVEL SECURITY
-ALTER TABLE tutor_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE family_profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Tutors manage own profile"
-  ON tutor_profiles FOR ALL USING (auth.uid() = user_id);
-
-CREATE POLICY "Public read approved tutors"
-  ON tutor_profiles FOR SELECT
-  USING (is_active = true AND is_approved = true);
-
-CREATE POLICY "Families manage own profile"
-  ON family_profiles FOR ALL USING (auth.uid() = user_id);
-
-Wait for me to confirm I've run the SQL before continuing.
+## P3 — Email/WhatsApp updates `[OPEN]` (built on T0.2)
+**Why:** today users only learn status by logging in.
+**Do:** send on real state changes —
+- **Registration status:** approved / not approved (+ reason / what's missing).
+- **Booking lifecycle (both sides):** new request, accepted, declined, paid,
+  upcoming-lesson reminder.
+- **Trial + payment + payout** confirmations.
+Email for diaspora/email users; WhatsApp link for local. Keep copy brief + human.
+**Acceptance:** each event sends the right message to the right party; no duplicate
+sends; unsubscribe/marketing rules respected; nothing blocks the core flow if email
+fails.
 
 ---
 
-### TASK 2.4 — Create the Register page
-
-Create the file: app/(auth)/register/page.tsx
-
-This page must:
-1. Show a role picker first (Tutor or Family cards to click)
-2. After role is chosen, show a registration form (name, email, password)
-3. On submit, call supabase.auth.signUp()
-4. After signUp, insert a row into tutor_profiles or family_profiles depending on role
-5. Show a "Check your email" success screen after submit
-6. Have a link to /login at the bottom
-
-Use createClient from @/lib/supabase/client
-Use the design system from CLAUDE.md
-Form validation: all fields required, password minimum 8 characters
-Show a clear red error message if signup fails
-Disable the submit button while loading
-Show "Creating account..." text on the button while loading
+## P6 — Verification: safety floor NOW `[OPEN]`
+**Why:** adults enter homes with children — a non-negotiable trust + legal floor.
+Maximal rigor is deferred for general tutors (would starve supply) but applied to
+Quran/diaspora (P5).
+**Do now:** require, before public approval — **national ID on file (private)**,
+acceptance of a **safeguarding / code-of-conduct agreement**, completed core profile
++ photo + ≥1 competence evidence. Enforce the labels (the trigger makes them real).
+**Defer (`[LATER]`):** progressively stricter general checks (references, credential
+verification) once supply exists.
+**Acceptance:** a tutor cannot be publicly approved without ID-on-file + safeguarding
+acceptance + photo + evidence; labels reflect what was actually reviewed.
 
 ---
 
-### TASK 2.5 — Create the Login page
-
-Create the file: app/(auth)/login/page.tsx
-
-This page must:
-1. Show email and password fields
-2. On submit, call supabase.auth.signInWithPassword()
-3. On success, redirect to /dashboard using router.push('/dashboard') then router.refresh()
-4. Show a user-friendly error message on failure (not the raw Supabase error)
-5. Have a "Forgot password?" link to /forgot-password
-6. Have a link to /register at the bottom
-
-Use createClient from @/lib/supabase/client
-Use the design system from CLAUDE.md
-Disable the button while loading
-
----
-
-### TASK 2.6 — Create the Forgot Password page
-
-Create the file: app/(auth)/forgot-password/page.tsx
-
-This page must:
-1. Show a single email input and a "Send Reset Link" button
-2. Call supabase.auth.resetPasswordForEmail() with redirectTo set to window.location.origin + '/update-password'
-3. After sending, show a success screen saying "Check your email"
-4. Disable button while loading and when email field is empty
-
-Use createClient from @/lib/supabase/client
-Use the design system from CLAUDE.md
+## P5 — Diaspora online Quran (future main revenue) `[OPEN]`
+**Why:** highest-margin segment — diaspora pays with foreign cards; Gambian tutor
+cost base. Confirmed feasible: **Waychit accepts international cards, settled in GMD**
+(no separate processor needed).
+**Tasks:**
+- **P5.0 `[MANUAL]`** — confirm with Waychit support that international-card
+  acceptance is enabled on the merchant account + get the intl-card fee schedule.
+- **P5.1** — real **online lesson** flow + **timezone-aware scheduling** (tutors use
+  their own WhatsApp/Zoom/Meet link at launch; no video integration).
+- **P5.2** — **strict Quran verification track** (recitation video, Tajweed
+  assessment, ijazah/sanad or recognized madrasa credential, scholar reference)
+  reviewed by a **`quran_verifier`** admin (uses T0.3).
+- **P5.3** — diaspora pricing with **"≈ $ / £ / €" display** (charge stays GMD) +
+  diaspora landing page + SEO ("trusted Gambian Quran teachers online").
+**Acceptance (per task):** a diaspora user can book + pay online with a foreign card;
+Quran tutors can't be diaspora-listed without passing the strict track; pricing shows
+foreign-currency estimates.
 
 ---
 
-### TASK 2.7 — Create middleware.ts to protect the dashboard
+## Moat — real gaps only (the rest already exists) `[OPEN]/[LATER]`
 
-Create the file: middleware.ts in the ROOT of the project (same level as package.json).
-
-This file must:
-1. Check if the visitor is logged in using supabase.auth.getUser()
-2. If NOT logged in and trying to visit /dashboard, /family, /book, or /messages — redirect to /login
-3. Pass all other requests through unchanged
-
-Use createServerClient from @supabase/ssr (not from lib/supabase/server)
-Read the exact middleware pattern from the Supabase SSR docs pattern.
-
-After creating it, tell me to:
-1. Open an incognito window (Cmd+Shift+N)
-2. Go to http://localhost:3000/dashboard
-3. I should be redirected to /login automatically
-
----
-
-### TASK 2.8 — Create the ImageUpload component
-
-Create the file: app/components/ImageUpload.tsx
-
-This component must:
-- Accept props: currentPhotoUrl (optional string) and onUpload (callback function)
-- Show the current photo in a circle, or a camera emoji placeholder if no photo
-- Have a "Choose Photo" button that opens the file picker
-- Accept only image files (image/*)
-- Block files over 2MB with an alert
-- Upload to Supabase Storage bucket called 'avatars'
-- Generate a unique filename using Date.now()
-- Call onUpload(url) with the public URL after a successful upload
-- Show "Uploading..." text and disable the button while uploading
-
-Use createClient from @/lib/supabase/client
-Use the design system from CLAUDE.md
-
-NOTE: Before this task works fully, I need to create the 'avatars' bucket in Supabase Storage manually.
-Remind me to do this: Supabase → Storage → New Bucket → name: avatars → tick Public → Create.
+- **Programmatic SEO** `[OPEN]` — auto-generated **subject × location** landing pages
+  ("Quran tutor in Serrekunda", "WASSCE Maths tutor Brikama") + diaspora terms.
+  Strongest long-term demand moat; hard for late entrants to out-rank.
+- **PDPP account self-service** `[OPEN]` — account settings page with **data export +
+  account deletion** (legal requirement, currently missing).
+- **Referrals** `[LATER]` — tutor-refers-tutor and family-refers-family incentives
+  (supply + demand liquidity).
+- **In-app dispute/refund workflow** `[LATER]` — escrow dispute path beyond the
+  current policy text.
+- **Funnel + supply-gap analytics** `[LATER]` — profile-view→booking funnel and
+  "demand with no tutors" view, on top of existing charts.
+- **School / madrasa partnerships** `[MANUAL]` — MOUs to onboard trusted supply.
+- **Payout ledger / reconciliation** `[LATER]` — formal ledger as volume grows.
 
 ---
 
-### TASK 2.9 — Build the Tutor Dashboard page
-
-Update or replace: app/dashboard/page.tsx
-
-This page must:
-1. On load, get the current logged-in user with supabase.auth.getUser()
-2. Fetch their row from tutor_profiles where user_id = user.id
-3. Populate all form fields with the fetched data
-4. Let the tutor edit: name, phone, location (dropdown from ALL_LOCATIONS), hourly rate, bio, subjects (tag picker), profile photo
-5. Save button calls supabase.from('tutor_profiles').upsert() with updated data
-6. Show "✓ Profile saved successfully!" for 3 seconds after saving
-7. Have a Sign Out button that calls supabase.auth.signOut() then redirects to /
-
-Subjects picker: render ALL_SUBJECTS as clickable pill buttons.
-Selected = bg-emerald-600 text-white. Unselected = bg-gray-100 text-gray-600.
-Clicking a subject toggles it on/off.
-
-Show a full-page spinner while the profile is loading.
-
-Use createClient from @/lib/supabase/client
-Import ALL_SUBJECTS and ALL_LOCATIONS from @/lib/constants
-Import ImageUpload from @/app/components/ImageUpload
-Use the design system from CLAUDE.md
+## Not now (skip unless a real business reason appears)
+Full Arabic site translation · heavy admin/analytics expansion · video-platform
+integration · complex verification tiers beyond the two tracks · broad refactors ·
+feature-heavy chat/messaging.
 
 ---
 
-### TASK 2.10 — Add Sign In / Join links to the Header
-
-Look at app/components/Header.tsx.
-Show me its current content first and wait for me to review.
-Then add "Sign In" (link to /login) and "Join Free" (button to /register) to the navigation.
-Do not remove any existing links.
-
----
-
-## END OF PHASE 2
-
-When all tasks are done, tell me:
-1. Everything that was created or changed (list of files)
-2. The full test checklist to verify everything works
-3. The git commands to save and deploy
-
----
-
-## HOW TO USE THIS FILE
-
-When I open Claude Code and type "read TASKS.md and tell me where we are",
-you will read this file and tell me which tasks are done and which are next.
-
-Each session, start by asking me: "Which task do you want to work on?"
-Never assume — always ask before starting work.
+## Release rules
+Before any push/deploy (ask Abdul first — see CLAUDE.md §8):
+1. inspect the diff; only intended files. 2. `npm run build` + `npm run lint`.
+3. run `/security-review` (payments/children's data). 4. test the real flow at phone
+width. 5. state what changed, what still needs manual testing, what was excluded.

@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# stray files from other projects that share this working directory
+# (research logs, rescue snapshots) — not part of the app
+*.log
+/mbp-rescue/
+
+# sensitive business documents — must never be committed
+*business_registration*
+*_cert_*.jpeg
