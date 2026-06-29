@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { lessonsForBooking } from '@/lib/pricing'
 
 export interface PaymentBookingRow {
   id: string
@@ -13,7 +14,7 @@ export async function ensureLessonsForBooking(
   supabase: ReturnType<typeof createAdminClient>,
   booking: PaymentBookingRow
 ) {
-  const totalLessons = Math.floor(booking.hours_per_month / 2)
+  const totalLessons = lessonsForBooking(booking.hours_per_month)
 
   if (totalLessons <= 0) return
 

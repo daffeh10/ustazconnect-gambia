@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { lessonsForBooking } from '@/lib/pricing'
 
 interface BookingRow {
   id: string
@@ -163,7 +164,7 @@ export default function PaymentPage() {
     )
   }
 
-  const sessionsCount = Math.floor(booking.hours_per_month / 2)
+  const sessionsCount = lessonsForBooking(booking.hours_per_month)
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">

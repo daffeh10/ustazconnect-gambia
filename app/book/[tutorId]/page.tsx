@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
+import { computeBookingCharge } from '@/lib/pricing'
 
 interface TutorProfile {
   id: string
@@ -217,9 +218,11 @@ export default function BookTutorPage() {
 
     try {
       const hourlyRate = tutor.hourly_rate || 0
-      const monthlyTotal = hoursPerMonth * hourlyRate
-      const serviceFee = Math.round(monthlyTotal * 0.03)
-      const grandTotal = monthlyTotal + serviceFee
+      // Display/estimate only — the server recomputes the authoritative charge.
+      const { monthlyTotal, serviceFee, grandTotal } = computeBookingCharge({
+        hourlyRate,
+        hoursPerMonth,
+      })
 
       const bookingPayload = {
         tutor_id: tutor.id,
@@ -271,9 +274,7 @@ export default function BookTutorPage() {
   }
 
   const hourlyRate = tutor?.hourly_rate || 0
-  const monthlyTotal = hoursPerMonth * hourlyRate
-  const serviceFee = Math.round(monthlyTotal * 0.03)
-  const grandTotal = monthlyTotal + serviceFee
+  const { monthlyTotal, serviceFee, grandTotal } = computeBookingCharge({ hourlyRate, hoursPerMonth })
 
   if (isLoading) {
     return (

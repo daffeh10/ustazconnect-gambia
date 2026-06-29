@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getSiteUrl, getWaychitApiKey, getWaychitApiUrl } from '@/lib/payments'
+import { computeBookingCharge } from '@/lib/pricing'
 
 interface BookingRow {
   id: string
@@ -104,10 +105,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'This booking has invalid lesson hours.' }, { status: 400 })
     }
 
-    // Authoritative amounts — must mirror the client formula (3% service fee).
-    const monthlyTotal = hoursPerMonth * tutor.hourly_rate
-    const serviceFee = Math.round(monthlyTotal * 0.03)
-    const grandTotal = monthlyTotal + serviceFee
+    // Authoritative amounts, computed by the shared pricing engine.
+    const { monthlyTotal, serviceFee, grandTotal } = computeBookingCharge({
+      hourlyRate: tutor.hourly_rate,
+      hoursPerMonth,
+    })
 
     if (!isValidPaymentAmount(grandTotal)) {
       console.error('Invalid recomputed booking total for Waychit checkout.', {
