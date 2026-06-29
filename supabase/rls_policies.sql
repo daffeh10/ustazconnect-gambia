@@ -95,6 +95,43 @@ drop policy if exists "Inquiries are readable" on public.inquiries;
 
 
 -- =============================================================================
+-- FIX 3 (T0.1b) — payouts are created only by the server, never the client
+-- =============================================================================
+-- GAP: policy "Tutors manage own payouts" is FOR ALL, so a tutor can INSERT a
+--      payout row with any amount/commission/lessons_count via the anon key, and
+--      the admin "mark paid" route pays payout.amount without recomputing it.
+--
+-- FIX: payouts are now created by POST /api/payouts/request (service role), which
+--      recomputes the amount from the tutor's completed unpaid lessons. So tutors
+--      need READ access only — drop their write access.
+--
+-- ORDER OF DEPLOYMENT (important): deploy the app code that calls
+--   /api/payouts/request FIRST, confirm a payout request works, THEN run this SQL.
+--   If you run this before deploying, the old client (which inserts directly) can
+--   no longer create payouts.
+--
+-- STATUS: NOT YET APPLIED as of 2026-06-29.
+
+drop policy if exists "Tutors manage own payouts" on public.payouts;
+
+create policy "Tutors read own payouts"
+  on public.payouts for select
+  to public
+  using (tutor_id in (select id from public.tutor_profiles where user_id = auth.uid()));
+
+-- VERIFY:
+--   - tutor dashboard "Request payout" still works (goes through the server route)
+--   - the payout history list still loads (SELECT still allowed)
+--   - a direct client INSERT into payouts now fails for a tutor
+--
+-- ROLLBACK:
+--   drop policy if exists "Tutors read own payouts" on public.payouts;
+--   create policy "Tutors manage own payouts" on public.payouts
+--     for all to public
+--     using (tutor_id in (select id from public.tutor_profiles where user_id = auth.uid()));
+
+
+-- =============================================================================
 -- OPTIONAL LATER — hide approved tutors' phone/email columns from anon
 -- =============================================================================
 -- The public read policy on tutor_profiles correctly limits ROWS to approved

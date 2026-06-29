@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
+import { computeLessonEarning, lessonHoursFromMinutes } from '@/lib/pricing'
+import { computePayableSummary } from '@/lib/payouts'
 import ImageUpload from '@/app/components/ImageUpload'
 import DocumentUpload from '@/app/components/DocumentUpload'
 import type { DocumentType } from '@/app/components/DocumentUpload'
@@ -32,8 +34,6 @@ import {
 } from '@/lib/tutor-review'
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const COMMISSION_RATE = 5
-const DEFAULT_LESSON_MINUTES = 120
 
 interface TutorProfileRow {
   id: string
@@ -806,10 +806,11 @@ export default function DashboardPage() {
       const booking = bookingsById[lesson.booking_id]
       if (!booking || booking.status !== 'active') return null
 
-      const lessonHours = Math.max(1, Math.round((lesson.duration_minutes ?? DEFAULT_LESSON_MINUTES) / 60))
-      const grossAmount = lessonHours * booking.hourly_rate
-      const commissionAmount = Math.round(grossAmount * (COMMISSION_RATE / 100))
-      const netAmount = grossAmount - commissionAmount
+      const lessonHours = lessonHoursFromMinutes(lesson.duration_minutes)
+      const { gross: grossAmount, commission: commissionAmount, net: netAmount } = computeLessonEarning({
+        hourlyRate: booking.hourly_rate,
+        lessonHours,
+      })
 
       return {
         ...lesson,
@@ -825,13 +826,6 @@ export default function DashboardPage() {
     .filter((lesson): lesson is NonNullable<typeof lesson> => lesson !== null)
     .sort((a, b) => new Date(a.completedAtSortable).getTime() - new Date(b.completedAtSortable).getTime())
 
-  const reservedPayoutLessonCount = payouts.reduce((sum, payout) => {
-    if (payout.status === 'pending' || payout.status === 'completed') {
-      return sum + (payout.lessons_count || 0)
-    }
-    return sum
-  }, 0)
-
   const completedPayoutLessonCount = payouts.reduce((sum, payout) => {
     if (payout.status === 'completed') {
       return sum + (payout.lessons_count || 0)
@@ -839,16 +833,32 @@ export default function DashboardPage() {
     return sum
   }, 0)
 
-  const payableLessons = completedLessonRows.slice(Math.min(reservedPayoutLessonCount, completedLessonRows.length))
-  const lessonsThisMonth = completedLessonRows.filter((lesson) => {
-    const date = new Date(lesson.completedAtSortable)
-    const now = new Date()
+  // Payout estimate comes from the shared, server-authoritative calculator, so the
+  // on-screen amount always matches what the server will pay. Regular payouts
+  // settle monthly: only lessons whose month has ended are payable.
+  const payoutSummary = computePayableSummary({
+    lessons,
+    bookingsById,
+    existingPayouts: payouts,
+  })
+  const pendingPayoutAmount = payoutSummary.amount
+  const pendingCommissionAmount = payoutSummary.commissionDeducted
+  const payableLessonsCount = payoutSummary.lessonsCount
+
+  const now = new Date()
+  const isCurrentMonth = (dateString: string) => {
+    const date = new Date(dateString)
     return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
-  }).length
+  }
+  const lessonsThisMonth = completedLessonRows.filter((lesson) =>
+    isCurrentMonth(lesson.completedAtSortable)
+  ).length
+  // Earned this month but not payable until the month ends.
+  const currentMonthEarnings = completedLessonRows
+    .filter((lesson) => isCurrentMonth(lesson.completedAtSortable))
+    .reduce((sum, lesson) => sum + lesson.netAmount, 0)
   const totalEarned = completedLessonRows.reduce((sum, lesson) => sum + lesson.netAmount, 0)
   const totalCommission = completedLessonRows.reduce((sum, lesson) => sum + lesson.commissionAmount, 0)
-  const pendingPayoutAmount = payableLessons.reduce((sum, lesson) => sum + lesson.netAmount, 0)
-  const pendingCommissionAmount = payableLessons.reduce((sum, lesson) => sum + lesson.commissionAmount, 0)
   const completedPayoutAmount = payouts.reduce((sum, payout) => {
     if (payout.status === 'completed') {
       return sum + payout.amount
@@ -857,26 +867,20 @@ export default function DashboardPage() {
   }, 0)
 
   async function handleRequestPayout() {
-    if (!profileId || pendingPayoutAmount <= 0 || payableLessons.length === 0) return
+    if (!profileId || pendingPayoutAmount <= 0 || payableLessonsCount === 0) return
 
     setPayoutsError('')
     setIsRequestingPayout(true)
 
     try {
-      const periodStart = payableLessons[0]?.completed_at?.slice(0, 10) || null
-      const periodEnd = payableLessons[payableLessons.length - 1]?.completed_at?.slice(0, 10) || null
+      // The payout amount is computed and created server-side (authoritative);
+      // the dashboard only shows an estimate.
+      const response = await fetch('/api/payouts/request', { method: 'POST' })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
 
-      const { error: insertError } = await supabase.from('payouts').insert({
-        tutor_id: profileId,
-        amount: pendingPayoutAmount,
-        commission_deducted: pendingCommissionAmount,
-        lessons_count: payableLessons.length,
-        period_start: periodStart,
-        period_end: periodEnd,
-        status: 'pending',
-      })
-
-      if (insertError) throw insertError
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not request payout right now.')
+      }
 
       setIsRequestPayoutOpen(false)
       showBookingToast('Request sent. Admin processes within 24 hours.')
@@ -1856,11 +1860,17 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-600 mt-1">
                     Track what you earned for each completed, paid lesson.
                   </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Payouts are released at the end of each month.
+                    {currentMonthEarnings > 0
+                      ? ` ${formatMoney(currentMonthEarnings)} earned this month becomes available once the month ends.`
+                      : ''}
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsRequestPayoutOpen(true)}
-                  disabled={pendingPayoutAmount <= 0 || payableLessons.length === 0 || isRequestingPayout}
+                  disabled={pendingPayoutAmount <= 0 || payableLessonsCount === 0 || isRequestingPayout}
                   className="bg-emerald-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Request Payout
@@ -1999,7 +2009,7 @@ export default function DashboardPage() {
               <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-gray-600">Lessons included</span>
-                  <span className="font-medium text-gray-900">{payableLessons.length}</span>
+                  <span className="font-medium text-gray-900">{payableLessonsCount}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-gray-600">Commission deducted</span>

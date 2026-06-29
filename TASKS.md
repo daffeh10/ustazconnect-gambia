@@ -47,6 +47,11 @@ in checkout) and fee rules are scattered. Centralize so fees can change per segm
 tutor rates/packages. All payment routes call it. Client shows estimates only.
 **Acceptance:** no monetary value is trusted from the client anywhere; checkout,
 confirm, and (future) trial/diaspora all use one module; build + lint pass.
+**Status (2026-06-29):** `lib/pricing.ts` (charges) + `lib/payouts.ts` (payouts)
+built and wired. Payouts are now created by `POST /api/payouts/request` (server
+authority) — RLS FIX 3 in `supabase/rls_policies.sql` not yet applied. **Regular
+payouts settle monthly: a lesson is payable only after its month has ended.**
+Pending: Abdul's local re-test, then commit; apply FIX 3 after deploy.
 
 ### T0.2 — Email + notification infrastructure `[NEXT]`
 **Why:** no transactional emails exist today; needed by P2/P3/P5.
@@ -96,6 +101,9 @@ tutor's time/transport.
 transport, no commission**, paid to us via Waychit and **held in escrow**. Tutor
 attends → family confirms (or auto-confirms after 48h) → we release D150 to the
 tutor. After it, the family decides whether to book monthly.
+**Payout exception:** the trial is the ONE payout that is NOT on the monthly
+settlement cycle — it pays within **48h** of completion + family confirmation.
+Keep trial bookings/lessons OUT of the monthly payout calculator (`lib/payouts.ts`).
 **Guardrails:** one trial per family–tutor pair; **tutor no-show → auto-refund the
 family**; decide who absorbs the Waychit fee (recommend family pays D150 + fee so
 tutor nets a clean D150).

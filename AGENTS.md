@@ -60,7 +60,11 @@
 - **Trial session: D150** transport-only, **no commission** (see TASKS P2).
 - Escrow: family pays upfront → held → released to tutor after lessons are
   confirmed (auto-confirm after 24h if no dispute).
-- **All money math is server-side.** See the gotcha below.
+- **Payout timing:** regular tutor payouts settle **monthly** — a lesson is payable
+  only after its calendar month has ended (`lib/payouts.ts`). The **trial** session
+  is the exception: D150 paid within 48h of completion + family confirmation (P2).
+- **All money math is server-side**, via `lib/pricing.ts` (charges) and
+  `lib/payouts.ts` (payouts). See the gotcha below.
 
 ## 5. Gotchas — the things agents get wrong here (read before editing)
 
