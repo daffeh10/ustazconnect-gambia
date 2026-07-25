@@ -10,8 +10,8 @@ export async function GET() {
       error: userError,
     } = await authSupabase.auth.getUser()
 
-    if (userError) throw userError
     if (!user) return NextResponse.json({ error: 'Please sign in first.' }, { status: 401 })
+    if (userError) throw userError
 
     const supabase = createAdminClient()
     const [

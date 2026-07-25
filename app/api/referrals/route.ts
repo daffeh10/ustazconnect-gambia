@@ -23,8 +23,8 @@ export async function POST(request: Request) {
       error: userError,
     } = await authSupabase.auth.getUser()
 
-    if (userError) throw userError
     if (!user) return NextResponse.json({ error: 'Please sign in first.' }, { status: 401 })
+    if (userError) throw userError
 
     const supabase = createAdminClient()
     const { error } = await supabase.from('referrals').insert({

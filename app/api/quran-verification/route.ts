@@ -17,8 +17,8 @@ async function getTutorIdForSession() {
     error: userError,
   } = await authSupabase.auth.getUser()
 
-  if (userError) throw userError
   if (!user) return { tutorId: '', error: 'Please sign in first.' }
+  if (userError) throw userError
 
   const supabase = createAdminClient()
   const { data: tutor, error } = await supabase

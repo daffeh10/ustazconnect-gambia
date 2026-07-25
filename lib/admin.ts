@@ -18,8 +18,8 @@ export async function getAdminContext() {
     error: userError,
   } = await supabase.auth.getUser()
 
-  if (userError) throw userError
   if (!user) return { user: null, admin: null, supabase }
+  if (userError) throw userError
 
   let { data: admin, error: adminError } = await supabase
     .from('admin_users')

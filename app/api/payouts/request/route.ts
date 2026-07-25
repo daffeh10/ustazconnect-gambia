@@ -32,10 +32,10 @@ export async function POST() {
       error: userError,
     } = await authSupabase.auth.getUser()
 
-    if (userError) throw userError
     if (!user) {
       return NextResponse.json({ error: 'Please sign in to request a payout.' }, { status: 401 })
     }
+    if (userError) throw userError
 
     const supabase = createAdminClient()
 
