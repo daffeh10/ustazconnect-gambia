@@ -56,6 +56,9 @@ export default function Header() {
             <Link href="/find-tutor" className="text-gray-600 hover:text-emerald-700 transition">
               Find Tutor
             </Link>
+            <Link href="/online-quran" className="text-gray-600 hover:text-emerald-700 transition">
+              Online Quran
+            </Link>
 
             {isLoading ? (
               <div className="h-10 w-28 rounded-lg bg-gray-100 animate-pulse" />
@@ -64,6 +67,9 @@ export default function Header() {
                 <Link href={dashboardHref} className="flex items-center gap-3 text-gray-600 hover:text-emerald-700 transition">
                   <Avatar name={profileName} photoUrl={profilePhotoUrl} size="sm" />
                   <span>Dashboard</span>
+                </Link>
+                <Link href="/account/settings" className="text-gray-600 hover:text-emerald-700 transition">
+                  Account
                 </Link>
                 <button
                   onClick={handleSignOut}
@@ -116,6 +122,13 @@ export default function Header() {
             >
               Find Tutor
             </Link>
+            <Link
+              href="/online-quran"
+              className="block text-gray-600 hover:text-emerald-700 transition py-2"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Online Quran
+            </Link>
 
             {isLoading ? (
               <div className="h-10 w-full rounded-lg bg-gray-100 animate-pulse" />
@@ -128,6 +141,13 @@ export default function Header() {
                 >
                   <Avatar name={profileName} photoUrl={profilePhotoUrl} size="sm" />
                   <span>Dashboard</span>
+                </Link>
+                <Link
+                  href="/account/settings"
+                  className="block text-gray-600 hover:text-emerald-700 transition py-2"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Account Settings
                 </Link>
                 <button
                   onClick={() => {

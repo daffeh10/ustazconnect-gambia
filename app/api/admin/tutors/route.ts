@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
+import { composeEmail, sendEmail } from '@/lib/email'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAdminContext } from '@/lib/admin'
+import { getAdminContext, hasAdminRole } from '@/lib/admin'
+import { writeAdminAuditLog } from '@/lib/admin-audit'
 import {
   getTutorDocumentTypeLabel,
   normalizeTutorVerificationStatus,
@@ -67,7 +69,7 @@ function isCoreProfileReadyForBasicApproval(tutor: TutorRow) {
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -145,7 +147,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin']) || !admin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -216,6 +218,27 @@ export async function PATCH(request: Request) {
 
       if (approveError) throw approveError
 
+      await writeAdminAuditLog({
+        admin,
+        action: 'tutor.approved',
+        targetType: 'tutor_profile',
+        targetId: tutorId,
+        metadata: { approval_outcome: approvalOutcome },
+      })
+
+      if (tutor.email) {
+        await sendEmail({
+          to: tutor.email,
+          subject: 'Your TutorConnect tutor profile is approved',
+          text: composeEmail([
+            `Hi ${tutor.name || 'Tutor'},`,
+            '',
+            `Your tutor profile has been approved as ${approvalOutcome.replace('_', ' ')}.`,
+            'Families can now find your profile and send booking requests.',
+          ]),
+        })
+      }
+
       return NextResponse.json({
         ok: true,
         approval_outcome: approvalOutcome,
@@ -232,6 +255,36 @@ export async function PATCH(request: Request) {
       .eq('id', tutorId)
 
     if (error) throw error
+
+    await writeAdminAuditLog({
+      admin,
+      action: 'tutor.rejected',
+      targetType: 'tutor_profile',
+      targetId: tutorId,
+      metadata: { reason: typeof body?.reason === 'string' ? body.reason.trim() : '' },
+    })
+
+    const { data: rejectedTutor } = await supabase
+      .from('tutor_profiles')
+      .select('name,email')
+      .eq('id', tutorId)
+      .maybeSingle<{ name: string | null; email: string | null }>()
+
+    if (rejectedTutor?.email) {
+      const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
+      await sendEmail({
+        to: rejectedTutor.email,
+        subject: 'TutorConnect profile review update',
+        text: composeEmail([
+          `Hi ${rejectedTutor.name || 'Tutor'},`,
+          '',
+          reason
+            ? `Your tutor profile needs more work before approval. Reason: ${reason}`
+            : 'Your tutor profile needs more work before approval.',
+          'You can update your dashboard and contact TutorConnect if you need help.',
+        ]),
+      })
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {

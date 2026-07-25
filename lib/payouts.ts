@@ -19,6 +19,7 @@ export interface PayoutLessonInput {
 export interface PayoutBookingInfo {
   status: string | null
   hourly_rate: number | null
+  booking_type?: string | null
 }
 
 export interface PayoutReservationInput {
@@ -61,6 +62,7 @@ export function computePayableSummary(params: {
     .map((lesson) => {
       const booking = bookingsById[lesson.booking_id]
       if (!booking || booking.status !== 'active') return null
+      if (booking.booking_type === 'trial') return null
 
       const lessonHours = lessonHoursFromMinutes(lesson.duration_minutes)
       const { commission, net } = computeLessonEarning({

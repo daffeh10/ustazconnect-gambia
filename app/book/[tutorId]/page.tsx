@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
-import { computeBookingCharge } from '@/lib/pricing'
+import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
 
 interface TutorProfile {
   id: string
@@ -22,6 +22,16 @@ interface TutorProfile {
   created_at: string | null
 }
 
+interface TutorPackage {
+  id: string
+  title: string
+  description: string | null
+  frequency_per_week: number
+  hours_per_visit: number
+  monthly_price: number
+  additional_child_amount: number | null
+}
+
 const HOURS_OPTIONS = [4, 8, 12, 16]
 const getBookingDraftKey = (tutorId: string) => `booking-draft:${tutorId}`
 
@@ -33,6 +43,11 @@ interface BookingDraft {
   familyPhone: string
   specialRequests: string
   lessonFormat: 'in_person' | 'online'
+  bookingType: 'monthly' | 'trial'
+  pricingModel: 'hourly' | 'package'
+  packageId: string
+  childrenCount: number
+  timezone: string
 }
 
 export default function BookTutorPage() {
@@ -56,6 +71,12 @@ export default function BookTutorPage() {
   const [familyPhone, setFamilyPhone] = useState('')
   const [specialRequests, setSpecialRequests] = useState('')
   const [lessonFormat, setLessonFormat] = useState<'in_person' | 'online'>('in_person')
+  const [bookingType, setBookingType] = useState<'monthly' | 'trial'>('monthly')
+  const [pricingModel, setPricingModel] = useState<'hourly' | 'package'>('hourly')
+  const [packages, setPackages] = useState<TutorPackage[]>([])
+  const [packageId, setPackageId] = useState('')
+  const [childrenCount, setChildrenCount] = useState(1)
+  const [timezone, setTimezone] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -86,8 +107,27 @@ export default function BookTutorPage() {
 
         setTutor(tutorData)
         setLessonFormat('in_person')
+        setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || '')
         if ((tutorData.subjects || []).length > 0) {
           setSelectedSubject(tutorData.subjects?.[0] || '')
+        }
+
+        const { data: packageData, error: packageError } = await supabase
+          .from('tutor_packages')
+          .select('id,title,description,frequency_per_week,hours_per_visit,monthly_price,additional_child_amount')
+          .eq('tutor_id', tutorId)
+          .eq('is_active', true)
+          .order('monthly_price', { ascending: true })
+
+        if (packageError) {
+          const message = packageError.message.toLowerCase()
+          if (!message.includes('tutor_packages') && !message.includes('schema cache') && !message.includes('does not exist')) {
+            throw packageError
+          }
+        } else {
+          const rows = (packageData ?? []) as TutorPackage[]
+          setPackages(rows)
+          if (rows[0]?.id) setPackageId(rows[0].id)
         }
       } catch (err) {
         console.error(err)
@@ -124,6 +164,11 @@ export default function BookTutorPage() {
       if (typeof draft.familyPhone === 'string') setFamilyPhone(draft.familyPhone)
       if (typeof draft.specialRequests === 'string') setSpecialRequests(draft.specialRequests)
       if (draft.lessonFormat === 'online' || draft.lessonFormat === 'in_person') setLessonFormat(draft.lessonFormat)
+      if (draft.bookingType === 'trial' || draft.bookingType === 'monthly') setBookingType(draft.bookingType)
+      if (draft.pricingModel === 'package' || draft.pricingModel === 'hourly') setPricingModel(draft.pricingModel)
+      if (typeof draft.packageId === 'string') setPackageId(draft.packageId)
+      if (typeof draft.childrenCount === 'number') setChildrenCount(Math.max(1, Math.floor(draft.childrenCount)))
+      if (typeof draft.timezone === 'string') setTimezone(draft.timezone)
     } catch (draftError) {
       console.error('Failed to load booking draft', draftError)
     }
@@ -140,10 +185,15 @@ export default function BookTutorPage() {
       familyPhone,
       specialRequests,
       lessonFormat,
+      bookingType,
+      pricingModel,
+      packageId,
+      childrenCount,
+      timezone,
     }
 
     window.sessionStorage.setItem(getBookingDraftKey(tutorId), JSON.stringify(draft))
-  }, [familyName, familyPhone, hoursPerMonth, lessonFormat, preferredDays, selectedSubject, specialRequests, tutorId])
+  }, [bookingType, childrenCount, familyName, familyPhone, hoursPerMonth, lessonFormat, packageId, preferredDays, pricingModel, selectedSubject, specialRequests, timezone, tutorId])
 
   useEffect(() => {
     const profileRecord = profile as Record<string, unknown> | null
@@ -201,6 +251,11 @@ export default function BookTutorPage() {
       return
     }
 
+    if (bookingType === 'monthly' && pricingModel === 'package' && !packageId) {
+      setError('Please choose a monthly package.')
+      return
+    }
+
     if (!user || !familyId) {
       setError('')
       setHelperMessage('Please sign in or create your family account to send this request. Your booking details are saved on this page.')
@@ -217,48 +272,30 @@ export default function BookTutorPage() {
     setIsSubmitting(true)
 
     try {
-      const hourlyRate = tutor.hourly_rate || 0
-      // Display/estimate only — the server recomputes the authoritative charge.
-      const { monthlyTotal, serviceFee, grandTotal } = computeBookingCharge({
-        hourlyRate,
-        hoursPerMonth,
+      const response = await fetch('/api/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tutorId: tutor.id,
+          subject: selectedSubject,
+          familyName: familyName.trim(),
+          familyPhone: familyPhone.trim() || null,
+          specialRequests: specialRequests.trim() || null,
+          preferredDays,
+          bookingType,
+          pricingModel,
+          packageId,
+          hoursPerMonth,
+          childrenCount,
+          lessonFormat,
+          timezone,
+        }),
       })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
 
-      const bookingPayload = {
-        tutor_id: tutor.id,
-        family_id: familyId,
-        family_name: familyName.trim(),
-        family_phone: familyPhone.trim() || null,
-        subjects: [selectedSubject],
-        hours_per_month: hoursPerMonth,
-        hourly_rate: hourlyRate,
-        monthly_total: monthlyTotal,
-        service_fee: serviceFee,
-        grand_total: grandTotal,
-        special_requests: specialRequests.trim() || null,
-        preferred_days: preferredDays,
-        status: 'pending',
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not send your booking request.')
       }
-
-      let { error: insertError } = await supabase.from('bookings').insert([
-        {
-          ...bookingPayload,
-          lesson_format: lessonFormat,
-        },
-      ])
-
-      if (
-        insertError &&
-        (
-          insertError.message.toLowerCase().includes('lesson_format') ||
-          insertError.message.toLowerCase().includes('column')
-        )
-      ) {
-        const fallback = await supabase.from('bookings').insert([bookingPayload])
-        insertError = fallback.error
-      }
-
-      if (insertError) throw insertError
 
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem(getBookingDraftKey(tutorId))
@@ -267,14 +304,24 @@ export default function BookTutorPage() {
       setIsSuccess(true)
     } catch (err) {
       console.error(err)
-      setError('Could not send your booking request. Please try again.')
+      setError(err instanceof Error ? err.message : 'Could not send your booking request. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const hourlyRate = tutor?.hourly_rate || 0
-  const { monthlyTotal, serviceFee, grandTotal } = computeBookingCharge({ hourlyRate, hoursPerMonth })
+  const selectedPackage = packages.find((item) => item.id === packageId) || null
+  const { monthlyTotal, serviceFee, grandTotal } =
+    bookingType === 'trial'
+      ? computeTrialBookingCharge()
+      : pricingModel === 'package' && selectedPackage
+        ? computePackageBookingCharge({
+            monthlyPrice: selectedPackage.monthly_price,
+            additionalChildAmount: selectedPackage.additional_child_amount,
+            childrenCount,
+          })
+        : computeBookingCharge({ hourlyRate, hoursPerMonth, childrenCount })
 
   if (isLoading) {
     return (
@@ -356,6 +403,40 @@ export default function BookTutorPage() {
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Booking type</label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex items-start gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                      <input
+                        type="radio"
+                        name="booking-type"
+                        value="monthly"
+                        checked={bookingType === 'monthly'}
+                        onChange={() => setBookingType('monthly')}
+                        className="mt-1 h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">Monthly tutoring</span>
+                        <span className="block text-sm text-gray-600">Book regular lessons for the month.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                      <input
+                        type="radio"
+                        name="booking-type"
+                        value="trial"
+                        checked={bookingType === 'trial'}
+                        onChange={() => setBookingType('trial')}
+                        className="mt-1 h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">Intro session</span>
+                        <span className="block text-sm text-gray-600">30-45 minutes. GMD 150 transport plus service fee.</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
                   <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-1">
                     Subject
                   </label>
@@ -375,23 +456,100 @@ export default function BookTutorPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label htmlFor="hours-per-month" className="block text-sm font-medium text-gray-700 mb-1">
-                    Hours per month
-                  </label>
-                  <select
-                    id="hours-per-month"
-                    value={hoursPerMonth}
-                    onChange={(event) => setHoursPerMonth(Number(event.target.value))}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  >
-                    {HOURS_OPTIONS.map((hours) => (
-                      <option key={hours} value={hours}>
-                        {hours}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {bookingType === 'monthly' && (
+                  <>
+                    {packages.length > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Pricing option</label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="flex items-center gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                            <input
+                              type="radio"
+                              name="pricing-model"
+                              checked={pricingModel === 'hourly'}
+                              onChange={() => setPricingModel('hourly')}
+                              className="h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-sm text-gray-700">Hourly</span>
+                          </label>
+                          <label className="flex items-center gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                            <input
+                              type="radio"
+                              name="pricing-model"
+                              checked={pricingModel === 'package'}
+                              onChange={() => setPricingModel('package')}
+                              className="h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-sm text-gray-700">Flat monthly package</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {pricingModel === 'package' && packages.length > 0 ? (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Monthly package</label>
+                        <div className="space-y-3">
+                          {packages.map((pkg) => (
+                            <label key={pkg.id} className="flex items-start gap-3 rounded-lg border border-gray-300 px-4 py-3">
+                              <input
+                                type="radio"
+                                name="package-id"
+                                value={pkg.id}
+                                checked={packageId === pkg.id}
+                                onChange={() => setPackageId(pkg.id)}
+                                className="mt-1 h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span>
+                                <span className="block text-sm font-medium text-gray-900">{pkg.title}</span>
+                                <span className="block text-sm text-gray-600">
+                                  {pkg.frequency_per_week}x/week, {pkg.hours_per_visit} hour{pkg.hours_per_visit === 1 ? '' : 's'} per visit · GMD {pkg.monthly_price.toLocaleString()}/month
+                                </span>
+                                {pkg.description && <span className="block text-sm text-gray-500 mt-1">{pkg.description}</span>}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label htmlFor="hours-per-month" className="block text-sm font-medium text-gray-700 mb-1">
+                          Hours per month
+                        </label>
+                        <select
+                          id="hours-per-month"
+                          value={hoursPerMonth}
+                          onChange={(event) => setHoursPerMonth(Number(event.target.value))}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        >
+                          {HOURS_OPTIONS.map((hours) => (
+                            <option key={hours} value={hours}>
+                              {hours}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label htmlFor="children-count" className="block text-sm font-medium text-gray-700 mb-1">
+                        Children learning together
+                      </label>
+                      <select
+                        id="children-count"
+                        value={childrenCount}
+                        onChange={(event) => setChildrenCount(Number(event.target.value))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      >
+                        {[1, 2, 3, 4].map((count) => (
+                          <option key={count} value={count}>
+                            {count}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
 
                 {tutor.offers_online && (
                   <div>
@@ -421,10 +579,25 @@ export default function BookTutorPage() {
                       </label>
                     </div>
                     {lessonFormat === 'online' && (
-                      <p className="mt-3 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        Your tutor will contact you with a meeting link (WhatsApp, Zoom, or Google Meet)
-                        before each lesson.
-                      </p>
+                      <div className="mt-3 space-y-3">
+                        <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                          Your tutor will contact you with a meeting link (WhatsApp, Zoom, or Google Meet)
+                          before each lesson.
+                        </p>
+                        <div>
+                          <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-1">
+                            Your timezone
+                          </label>
+                          <input
+                            id="timezone"
+                            type="text"
+                            value={timezone}
+                            onChange={(event) => setTimezone(event.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            placeholder="Example: Europe/London"
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -501,15 +674,15 @@ export default function BookTutorPage() {
                   <div className="space-y-2 text-gray-700">
                     <p className="flex justify-between gap-4">
                       <span>Monthly total</span>
-                      <span className="font-medium">D{monthlyTotal.toLocaleString()}</span>
+                      <span className="font-medium">GMD {monthlyTotal.toLocaleString()}</span>
                     </p>
                     <p className="flex justify-between gap-4">
                       <span>Service fee</span>
-                      <span className="font-medium">D{serviceFee.toLocaleString()}</span>
+                      <span className="font-medium">GMD {serviceFee.toLocaleString()}</span>
                     </p>
                     <p className="flex justify-between gap-4 text-gray-900 font-semibold border-t border-emerald-200 pt-2">
                       <span>Grand total</span>
-                      <span>D{grandTotal.toLocaleString()}</span>
+                      <span>GMD {grandTotal.toLocaleString()}</span>
                     </p>
                   </div>
                 </div>

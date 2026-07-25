@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getSiteUrl, getWaychitApiKey, getWaychitApiUrl } from '@/lib/payments'
-import { computeBookingCharge } from '@/lib/pricing'
+import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
 
 interface BookingRow {
   id: string
@@ -17,6 +17,15 @@ interface BookingRow {
   service_fee: number
   grand_total: number
   status: string | null
+  booking_type?: string | null
+  pricing_model?: string | null
+  package_id?: string | null
+  children_count?: number | null
+}
+
+interface TutorPackageRow {
+  monthly_price: number
+  additional_child_amount: number | null
 }
 
 interface WaychitPaymentRequestResponse {
@@ -65,14 +74,37 @@ export async function POST(request: Request) {
     const waychitApiKey = getWaychitApiKey()
     const siteUrl = getSiteUrl(request)
 
-    const { data: booking, error: bookingError } = await supabase
+    let { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id,family_id,tutor_id,family_name,family_phone,subjects,hours_per_month,monthly_total,service_fee,grand_total,status'
+        'id,family_id,tutor_id,family_name,family_phone,subjects,hours_per_month,monthly_total,service_fee,grand_total,status,booking_type,pricing_model,package_id,children_count'
       )
       .eq('id', bookingId)
       .eq('family_id', user.id)
       .maybeSingle<BookingRow>()
+
+    if (
+      bookingError &&
+      (
+        bookingError.message.toLowerCase().includes('booking_type') ||
+        bookingError.message.toLowerCase().includes('pricing_model') ||
+        bookingError.message.toLowerCase().includes('package_id') ||
+        bookingError.message.toLowerCase().includes('children_count') ||
+        bookingError.message.toLowerCase().includes('column')
+      )
+    ) {
+      const fallback = await supabase
+        .from('bookings')
+        .select(
+          'id,family_id,tutor_id,family_name,family_phone,subjects,hours_per_month,monthly_total,service_fee,grand_total,status'
+        )
+        .eq('id', bookingId)
+        .eq('family_id', user.id)
+        .maybeSingle<BookingRow>()
+
+      booking = fallback.data
+      bookingError = fallback.error
+    }
 
     if (bookingError) throw bookingError
     if (!booking) {
@@ -100,16 +132,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'This tutor cannot be booked right now.' }, { status: 400 })
     }
 
+    const bookingType = booking.booking_type || 'monthly'
+    const pricingModel = booking.pricing_model || 'hourly'
     const hoursPerMonth = booking.hours_per_month
-    if (!Number.isInteger(hoursPerMonth) || hoursPerMonth <= 0 || hoursPerMonth > 400) {
+    if (bookingType !== 'trial' && (!Number.isInteger(hoursPerMonth) || hoursPerMonth <= 0 || hoursPerMonth > 400)) {
       return NextResponse.json({ error: 'This booking has invalid lesson hours.' }, { status: 400 })
     }
 
     // Authoritative amounts, computed by the shared pricing engine.
-    const { monthlyTotal, serviceFee, grandTotal } = computeBookingCharge({
-      hourlyRate: tutor.hourly_rate,
-      hoursPerMonth,
-    })
+    let packageRow: TutorPackageRow | null = null
+    if (bookingType === 'monthly' && pricingModel === 'package') {
+      if (!booking.package_id) {
+        return NextResponse.json({ error: 'This package booking is missing package details.' }, { status: 400 })
+      }
+
+      const { data: packageData, error: packageError } = await supabase
+        .from('tutor_packages')
+        .select('monthly_price,additional_child_amount')
+        .eq('id', booking.package_id)
+        .eq('tutor_id', booking.tutor_id)
+        .maybeSingle<TutorPackageRow>()
+
+      if (packageError) throw packageError
+      if (!packageData) {
+        return NextResponse.json({ error: 'This package is no longer available.' }, { status: 400 })
+      }
+      packageRow = packageData
+    }
+
+    const { monthlyTotal, serviceFee, grandTotal } =
+      bookingType === 'trial'
+        ? computeTrialBookingCharge()
+        : packageRow
+          ? computePackageBookingCharge({
+              monthlyPrice: packageRow.monthly_price,
+              additionalChildAmount: packageRow.additional_child_amount,
+              childrenCount: booking.children_count || 1,
+            })
+          : computeBookingCharge({
+              hourlyRate: tutor.hourly_rate,
+              hoursPerMonth,
+              childrenCount: booking.children_count || 1,
+            })
 
     if (!isValidPaymentAmount(grandTotal)) {
       console.error('Invalid recomputed booking total for Waychit checkout.', {

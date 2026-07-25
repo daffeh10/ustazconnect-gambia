@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAdminContext } from '@/lib/admin'
+import { getAdminContext, hasAdminRole } from '@/lib/admin'
 
 interface BookingRow {
   id: string
@@ -24,7 +24,7 @@ function startOfMonthIso() {
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

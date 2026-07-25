@@ -15,8 +15,11 @@ export default function Footer() {
             <h4 className="text-white font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-sm">
               <li><Link href="/find-tutor" className="hover:text-white transition">Find a Tutor</Link></li>
+              <li><Link href="/online-quran" className="hover:text-white transition">Online Quran</Link></li>
+              <li><Link href="/referrals" className="hover:text-white transition">Referrals</Link></li>
               <li><Link href="/register/tutor" className="hover:text-white transition">Become a Tutor</Link></li>
               <li><Link href="/login" className="hover:text-white transition">Sign In</Link></li>
+              <li><Link href="/account/settings" className="hover:text-white transition">Account Settings</Link></li>
             </ul>
           </div>
           <div>

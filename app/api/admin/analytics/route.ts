@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAdminContext } from '@/lib/admin'
+import { getAdminContext, hasAdminRole } from '@/lib/admin'
 
 interface TutorAnalyticsRow {
   created_at: string | null
@@ -108,7 +108,7 @@ function topCounts(entries: string[], limit = 5): ChartPoint[] {
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

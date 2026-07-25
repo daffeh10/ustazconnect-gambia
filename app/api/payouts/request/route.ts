@@ -7,6 +7,7 @@ interface BookingRow {
   id: string
   status: string | null
   hourly_rate: number | null
+  booking_type?: string | null
 }
 
 interface LessonRow {
@@ -54,7 +55,7 @@ export async function POST() {
     // Recompute the payable amount server-side from authoritative data. Never trust
     // an amount supplied by the client.
     const [bookingsResult, lessonsResult, payoutsResult] = await Promise.all([
-      supabase.from('bookings').select('id,status,hourly_rate').eq('tutor_id', tutorId),
+      supabase.from('bookings').select('id,status,hourly_rate,booking_type').eq('tutor_id', tutorId),
       supabase
         .from('lessons')
         .select('booking_id,duration_minutes,status,completed_at,created_at')
@@ -62,13 +63,27 @@ export async function POST() {
       supabase.from('payouts').select('status,lessons_count').eq('tutor_id', tutorId),
     ])
 
-    if (bookingsResult.error) throw bookingsResult.error
+    let bookingRows = (bookingsResult.data ?? []) as BookingRow[]
+    if (bookingsResult.error) {
+      const message = bookingsResult.error.message.toLowerCase()
+      if (message.includes('booking_type') || message.includes('column')) {
+        const fallback = await supabase.from('bookings').select('id,status,hourly_rate').eq('tutor_id', tutorId)
+        if (fallback.error) throw fallback.error
+        bookingRows = (fallback.data ?? []) as BookingRow[]
+      } else {
+        throw bookingsResult.error
+      }
+    }
     if (lessonsResult.error) throw lessonsResult.error
     if (payoutsResult.error) throw payoutsResult.error
 
     const bookingsById: Record<string, PayoutBookingInfo> = {}
-    for (const booking of (bookingsResult.data ?? []) as BookingRow[]) {
-      bookingsById[booking.id] = { status: booking.status, hourly_rate: booking.hourly_rate }
+    for (const booking of bookingRows) {
+      bookingsById[booking.id] = {
+        status: booking.status,
+        hourly_rate: booking.hourly_rate,
+        booking_type: booking.booking_type || 'monthly',
+      }
     }
 
     const summary = computePayableSummary({

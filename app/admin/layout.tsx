@@ -5,13 +5,17 @@ import { usePathname, useRouter } from 'next/navigation'
 import { ReactNode, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-const NAV_ITEMS = [
-  { href: '/admin', label: 'Overview' },
-  { href: '/admin/tutors', label: 'Tutors' },
-  { href: '/admin/documents', label: 'Documents' },
-  { href: '/admin/reports', label: 'Reports' },
-  { href: '/admin/payouts', label: 'Payouts' },
-  { href: '/admin/analytics', label: 'Analytics' },
+type AdminRole = 'owner' | 'admin' | 'quran_verifier'
+
+const NAV_ITEMS: Array<{ href: string; label: string; roles: AdminRole[] }> = [
+  { href: '/admin', label: 'Overview', roles: ['owner', 'admin'] },
+  { href: '/admin/tutors', label: 'Tutors', roles: ['owner', 'admin'] },
+  { href: '/admin/documents', label: 'Documents', roles: ['owner', 'admin'] },
+  { href: '/admin/reports', label: 'Reports', roles: ['owner', 'admin'] },
+  { href: '/admin/payouts', label: 'Payouts', roles: ['owner', 'admin'] },
+  { href: '/admin/analytics', label: 'Analytics', roles: ['owner', 'admin'] },
+  { href: '/admin/admins', label: 'Admins', roles: ['owner'] },
+  { href: '/admin/quran', label: 'Quran', roles: ['owner', 'admin', 'quran_verifier'] },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -19,6 +23,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
   const [adminName, setAdminName] = useState('Admin')
+  const [adminRole, setAdminRole] = useState<AdminRole | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isNavOpen, setIsNavOpen] = useState(false)
 
@@ -38,12 +43,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         const { data: admin } = await supabase
           .from('admin_users')
-          .select('name')
+          .select('name,role')
           .eq('user_id', user.id)
-          .maybeSingle<{ name: string | null }>()
+          .maybeSingle<{ name: string | null; role: string | null }>()
 
-        if (isMounted && admin?.name) {
-          setAdminName(admin.name)
+        if (isMounted && admin) {
+          if (admin.name) setAdminName(admin.name)
+          setAdminRole(
+            admin.role === 'owner' || admin.role === 'quran_verifier'
+              ? admin.role
+              : 'admin'
+          )
         }
       } catch (error) {
         console.error('Failed to load admin profile', error)
@@ -56,6 +66,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       isMounted = false
     }
   }, [pathname, supabase])
+
+  useEffect(() => {
+    if (adminRole === 'quran_verifier' && pathname !== '/admin/quran') {
+      router.replace('/admin/quran')
+    }
+  }, [adminRole, pathname, router])
 
   useEffect(() => {
     setIsNavOpen(false)
@@ -119,7 +135,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
 
             <nav className="space-y-1">
-              {NAV_ITEMS.map((item) => {
+              {NAV_ITEMS.filter((item) => adminRole && item.roles.includes(adminRole)).map((item) => {
                 const isActive =
                   item.href === '/admin' ? pathname === item.href : pathname.startsWith(item.href)
                 return (
@@ -162,7 +178,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => adminRole && item.roles.includes(adminRole)).map((item) => {
             const isActive =
               item.href === '/admin' ? pathname === item.href : pathname.startsWith(item.href)
             return (

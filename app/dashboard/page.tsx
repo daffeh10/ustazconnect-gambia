@@ -11,6 +11,8 @@ import ImageUpload from '@/app/components/ImageUpload'
 import DocumentUpload from '@/app/components/DocumentUpload'
 import type { DocumentType } from '@/app/components/DocumentUpload'
 import LessonCard, { Lesson } from '@/app/components/LessonCard'
+import QuranVerificationPanel from '@/app/components/QuranVerificationPanel'
+import TutorPackageManager from '@/app/components/TutorPackageManager'
 import {
   AGE_GROUP_OPTIONS,
   EDUCATION_OPTIONS,
@@ -340,12 +342,15 @@ export default function DashboardPage() {
     setProcessingBookingId(booking.id)
 
     try {
-      const { error: updateError } = await supabase
-        .from('bookings')
-        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-        .eq('id', booking.id)
-
-      if (updateError) throw updateError
+      const response = await fetch('/api/bookings/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, action: 'accept' }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not accept this booking.')
+      }
 
       setBookingRequests((prev) => prev.filter((item) => item.id !== booking.id))
       setAwaitingPaymentBookings((prev) => [{ ...booking, status: 'confirmed' }, ...prev])
@@ -366,16 +371,15 @@ export default function DashboardPage() {
 
     try {
       const details = declineReason.trim()
-      const { error: updateError } = await supabase
-        .from('bookings')
-        .update({
-          status: 'cancelled',
-          special_requests: details ? `Decline reason: ${details}` : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', bookingId)
-
-      if (updateError) throw updateError
+      const response = await fetch('/api/bookings/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, action: 'decline', reason: details }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not decline this booking.')
+      }
 
       setBookingRequests((prev) => prev.filter((item) => item.id !== bookingId))
       setDeclineBookingId('')
@@ -925,6 +929,7 @@ export default function DashboardPage() {
     verificationStatus,
     createdAt: profileCreatedAt,
   })
+  const teachesQuran = subjects.some((subject) => subject.toLowerCase().includes('quran'))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1711,6 +1716,9 @@ export default function DashboardPage() {
                 </form>
               </div>
             </div>
+
+            {profileId && <TutorPackageManager tutorId={profileId} />}
+            <QuranVerificationPanel canShow={Boolean(profileId) && teachesQuran} />
 
             <section className="mt-8 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

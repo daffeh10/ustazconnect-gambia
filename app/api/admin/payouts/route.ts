@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
+import { composeEmail, sendEmail } from '@/lib/email'
+import { writeAdminAuditLog } from '@/lib/admin-audit'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAdminContext } from '@/lib/admin'
+import { getAdminContext, hasAdminRole } from '@/lib/admin'
 
 interface PayoutRow {
   id: string
@@ -14,12 +16,13 @@ interface TutorRow {
   id: string
   name: string | null
   phone: string | null
+  email?: string | null
 }
 
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -72,7 +75,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin']) || !admin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -85,6 +88,12 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = createAdminClient()
+    const { data: payout } = await supabase
+      .from('payouts')
+      .select('id,tutor_id,amount,lessons_count')
+      .eq('id', payoutId)
+      .maybeSingle<{ id: string; tutor_id: string; amount: number; lessons_count: number | null }>()
+
     const { error } = await supabase
       .from('payouts')
       .update({
@@ -95,6 +104,35 @@ export async function PATCH(request: Request) {
       .eq('id', payoutId)
 
     if (error) throw error
+
+    if (payout) {
+      const { data: tutor } = await supabase
+        .from('tutor_profiles')
+        .select('name,email')
+        .eq('id', payout.tutor_id)
+        .maybeSingle<{ name: string | null; email: string | null }>()
+
+      if (tutor?.email) {
+        await sendEmail({
+          to: tutor.email,
+          subject: 'TutorConnect payout completed',
+          text: composeEmail([
+            `Hi ${tutor.name || 'Tutor'},`,
+            '',
+            `Your payout of GMD ${payout.amount.toLocaleString()} has been marked paid.`,
+            `Reference: ${waveReference}`,
+          ]),
+        })
+      }
+
+      await writeAdminAuditLog({
+        admin,
+        action: 'payout.completed',
+        targetType: 'payout',
+        targetId: payout.id,
+        metadata: { waveReference, amount: payout.amount },
+      })
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {

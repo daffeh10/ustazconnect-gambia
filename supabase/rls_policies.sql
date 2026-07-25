@@ -113,6 +113,7 @@ drop policy if exists "Inquiries are readable" on public.inquiries;
 -- STATUS: NOT YET APPLIED as of 2026-06-29.
 
 drop policy if exists "Tutors manage own payouts" on public.payouts;
+drop policy if exists "Tutors read own payouts" on public.payouts;
 
 create policy "Tutors read own payouts"
   on public.payouts for select

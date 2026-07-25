@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAdminContext } from '@/lib/admin'
+import { getAdminContext, hasAdminRole } from '@/lib/admin'
+import { writeAdminAuditLog } from '@/lib/admin-audit'
 
 interface DocumentRow {
   id: string
@@ -22,7 +23,7 @@ interface TutorRow {
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -84,7 +85,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const { admin } = await getAdminContext()
-    if (!admin) {
+    if (!hasAdminRole(admin, ['owner', 'admin']) || !admin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -108,6 +109,14 @@ export async function PATCH(request: Request) {
       .eq('id', documentId)
 
     if (error) throw error
+
+    await writeAdminAuditLog({
+      admin,
+      action: status === 'approved' ? 'document.approved' : 'document.rejected',
+      targetType: 'tutor_document',
+      targetId: documentId,
+      metadata: { rejectionReason },
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

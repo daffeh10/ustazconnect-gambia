@@ -16,6 +16,10 @@ interface BookingRow {
   grand_total: number
   status: string | null
   created_at: string
+  booking_type?: string | null
+  trial_confirmed_at?: string | null
+  no_show_reported_at?: string | null
+  refund_status?: string | null
 }
 
 interface PaymentRow {
@@ -88,6 +92,11 @@ export default function FamilyDashboardPage() {
   const [tutorNames, setTutorNames] = useState<Record<string, string>>({})
   const [bookings, setBookings] = useState<BookingRow[]>([])
   const [payments, setPayments] = useState<PaymentRow[]>([])
+  const [trialActionId, setTrialActionId] = useState('')
+  const [trialMessage, setTrialMessage] = useState('')
+  const [disputeBookingId, setDisputeBookingId] = useState('')
+  const [disputeReason, setDisputeReason] = useState('')
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -119,7 +128,7 @@ export default function FamilyDashboardPage() {
 
         const { data: bookingsData, error: bookingsLoadError } = await supabase
           .from('bookings')
-          .select('id,tutor_id,subjects,hours_per_month,monthly_total,service_fee,grand_total,status,created_at')
+          .select('*')
           .eq('family_id', user.id)
           .order('created_at', { ascending: false })
 
@@ -235,6 +244,66 @@ export default function FamilyDashboardPage() {
     }
   }
 
+  async function updateTrial(bookingId: string, action: 'confirm' | 'no-show') {
+    setTrialActionId(bookingId)
+    setTrialMessage('')
+    setError('')
+
+    try {
+      const response = await fetch(action === 'confirm' ? '/api/trials/confirm' : '/api/trials/no-show', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok || !payload.ok) throw new Error(payload.error || 'Could not update trial.')
+
+      setTrialMessage(action === 'confirm' ? 'Trial confirmed. Tutor payout can be processed.' : 'No-show reported. TutorConnect will review the refund.')
+      setBookings((current) =>
+        current.map((booking) =>
+          booking.id === bookingId
+            ? {
+                ...booking,
+                trial_confirmed_at: action === 'confirm' ? new Date().toISOString() : booking.trial_confirmed_at,
+                no_show_reported_at: action === 'no-show' ? new Date().toISOString() : booking.no_show_reported_at,
+                refund_status: action === 'no-show' ? 'requested' : booking.refund_status,
+              }
+            : booking
+        )
+      )
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Could not update trial.')
+    } finally {
+      setTrialActionId('')
+    }
+  }
+
+  async function submitDispute(bookingId: string) {
+    setIsSubmittingDispute(true)
+    setError('')
+    setTrialMessage('')
+
+    try {
+      const response = await fetch('/api/disputes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, reason: disputeReason }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok || !payload.ok) throw new Error(payload.error || 'Could not submit dispute.')
+
+      setTrialMessage('Issue submitted. TutorConnect will review it.')
+      setDisputeBookingId('')
+      setDisputeReason('')
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Could not submit dispute.')
+    } finally {
+      setIsSubmittingDispute(false)
+    }
+  }
+
   if (isPageLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -294,6 +363,11 @@ export default function FamilyDashboardPage() {
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
+          </div>
+        )}
+        {trialMessage && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg mb-6">
+            {trialMessage}
           </div>
         )}
 
@@ -361,15 +435,15 @@ export default function FamilyDashboardPage() {
                     <div className="mt-4 grid sm:grid-cols-3 gap-3 text-sm text-gray-700">
                       <div className="rounded-lg bg-gray-50 px-3 py-3">
                         <p className="text-gray-500">Subtotal</p>
-                        <p className="font-semibold text-gray-900">D{booking.monthly_total.toLocaleString()}</p>
+                        <p className="font-semibold text-gray-900">GMD {booking.monthly_total.toLocaleString()}</p>
                       </div>
                       <div className="rounded-lg bg-gray-50 px-3 py-3">
                         <p className="text-gray-500">Service fee</p>
-                        <p className="font-semibold text-gray-900">D{booking.service_fee.toLocaleString()}</p>
+                        <p className="font-semibold text-gray-900">GMD {booking.service_fee.toLocaleString()}</p>
                       </div>
                       <div className="rounded-lg bg-emerald-50 px-3 py-3 border border-emerald-100">
                         <p className="text-emerald-700">Total</p>
-                        <p className="font-semibold text-emerald-900">D{booking.grand_total.toLocaleString()}</p>
+                        <p className="font-semibold text-emerald-900">GMD {booking.grand_total.toLocaleString()}</p>
                       </div>
                     </div>
 
@@ -418,8 +492,83 @@ export default function FamilyDashboardPage() {
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium">
-                      Active
+                      {booking.booking_type === 'trial' ? 'Trial active' : 'Active'}
                     </span>
+                  </div>
+                  {booking.booking_type === 'trial' && (
+                    <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
+                      {booking.trial_confirmed_at ? (
+                        <p className="text-sm text-emerald-800">Trial confirmed. TutorConnect can fast-track the tutor payout.</p>
+                      ) : booking.no_show_reported_at ? (
+                        <p className="text-sm text-amber-800">No-show reported. Refund status: {booking.refund_status || 'requested'}.</p>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-sm text-emerald-800">After the intro session, confirm attendance or report a no-show.</p>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void updateTrial(booking.id, 'confirm')}
+                              disabled={trialActionId === booking.id}
+                              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                            >
+                              Confirm Trial
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void updateTrial(booking.id, 'no-show')}
+                              disabled={trialActionId === booking.id}
+                              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                            >
+                              Report No-show
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-4">
+                    {disputeBookingId === booking.id ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <label htmlFor={`dispute-${booking.id}`} className="block text-sm font-medium text-amber-900 mb-1">
+                          What happened?
+                        </label>
+                        <textarea
+                          id={`dispute-${booking.id}`}
+                          value={disputeReason}
+                          onChange={(event) => setDisputeReason(event.target.value)}
+                          rows={3}
+                          className="w-full rounded-lg border border-amber-200 px-4 py-3 focus:ring-2 focus:ring-amber-500"
+                        />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void submitDispute(booking.id)}
+                            disabled={isSubmittingDispute}
+                            className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                          >
+                            Submit Issue
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDisputeBookingId('')
+                              setDisputeReason('')
+                            }}
+                            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDisputeBookingId(booking.id)}
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Report Issue
+                      </button>
+                    )}
                   </div>
                 </article>
               ))}

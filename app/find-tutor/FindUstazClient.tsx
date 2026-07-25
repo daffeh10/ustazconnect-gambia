@@ -47,15 +47,17 @@ function FindUstazInner() {
   // If the homepage passed a location in the URL (e.g. ?location=Bakau),
   // we use that as the starting value. Otherwise start empty = show all.
   const initialLocation = searchParams.get('location') || ''
+  const initialSubject = searchParams.get('subject') || ''
+  const initialOnlineOnly = searchParams.get('online') === '1'
 
   const [ustazs, setUstazs] = useState<UstazProfile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
   const [locationFilter, setLocationFilter] = useState(initialLocation)
-  const [subjectFilter, setSubjectFilter] = useState('')
+  const [subjectFilter, setSubjectFilter] = useState(initialSubject)
   const [maxRate, setMaxRate] = useState(500)
-  const [onlineOnly, setOnlineOnly] = useState(false)
+  const [onlineOnly, setOnlineOnly] = useState(initialOnlineOnly)
   const [recentTutors, setRecentTutors] = useState<UstazProfile[]>([])
 
   // ── Step 1: fetch ALL tutors from Supabase once ───────────────────────────

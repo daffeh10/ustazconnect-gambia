@@ -15,6 +15,8 @@ export const PRICING = {
   tutorCommissionRate: 0.05,
   /** Flat transport fee for a trial session — charged with no commission. (Reserved for P2.) */
   trialFeeAmount: 150,
+  /** Default extra charge per additional child for hourly bookings. */
+  additionalChildHourlyRate: 0.25,
   /** Default lesson length in minutes when a lesson row doesn't specify one. */
   defaultLessonMinutes: 120,
   /** Minimum chargeable amount, in GMD. */
@@ -29,6 +31,7 @@ export function roundGmd(amount: number): number {
 export interface BookingChargeInput {
   hourlyRate: number
   hoursPerMonth: number
+  childrenCount?: number
 }
 
 export interface BookingCharge {
@@ -37,9 +40,41 @@ export interface BookingCharge {
   grandTotal: number
 }
 
-/** What a family pays for a monthly booking: lesson cost + 3% service fee. */
-export function computeBookingCharge({ hourlyRate, hoursPerMonth }: BookingChargeInput): BookingCharge {
-  const monthlyTotal = hoursPerMonth * hourlyRate
+function normalizeChildrenCount(childrenCount: number | null | undefined) {
+  if (!Number.isFinite(childrenCount ?? 1)) return 1
+  return Math.max(1, Math.floor(childrenCount ?? 1))
+}
+
+/** What a family pays for a monthly hourly booking: lesson cost + 3% service fee. */
+export function computeBookingCharge({ hourlyRate, hoursPerMonth, childrenCount = 1 }: BookingChargeInput): BookingCharge {
+  const extraChildren = Math.max(0, normalizeChildrenCount(childrenCount) - 1)
+  const groupMultiplier = 1 + extraChildren * PRICING.additionalChildHourlyRate
+  const monthlyTotal = roundGmd(hoursPerMonth * hourlyRate * groupMultiplier)
+  const serviceFee = roundGmd(monthlyTotal * PRICING.familyServiceFeeRate)
+  const grandTotal = monthlyTotal + serviceFee
+  return { monthlyTotal, serviceFee, grandTotal }
+}
+
+export interface PackageChargeInput {
+  monthlyPrice: number
+  additionalChildAmount?: number | null
+  childrenCount?: number | null
+}
+
+export function computePackageBookingCharge({
+  monthlyPrice,
+  additionalChildAmount = 0,
+  childrenCount = 1,
+}: PackageChargeInput): BookingCharge {
+  const extraChildren = Math.max(0, normalizeChildrenCount(childrenCount) - 1)
+  const monthlyTotal = roundGmd(monthlyPrice + extraChildren * Math.max(0, additionalChildAmount || 0))
+  const serviceFee = roundGmd(monthlyTotal * PRICING.familyServiceFeeRate)
+  const grandTotal = monthlyTotal + serviceFee
+  return { monthlyTotal, serviceFee, grandTotal }
+}
+
+export function computeTrialBookingCharge(): BookingCharge {
+  const monthlyTotal = PRICING.trialFeeAmount
   const serviceFee = roundGmd(monthlyTotal * PRICING.familyServiceFeeRate)
   const grandTotal = monthlyTotal + serviceFee
   return { monthlyTotal, serviceFee, grandTotal }

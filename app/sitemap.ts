@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
+import { toSeoSlug } from '@/lib/seo-slugs'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 function getBaseUrl() {
@@ -21,6 +23,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.9,
     },
     {
+      url: `${baseUrl}/online-quran`,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}/register`,
       changeFrequency: 'monthly',
       priority: 0.7,
@@ -31,13 +38,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     },
   ]
+  const prioritySubjects = ALL_SUBJECTS.filter((subject) =>
+    ['Quran', 'Math', 'English', 'WASSCE', 'Physics', 'Arabic'].some((term) =>
+      subject.toLowerCase().includes(term.toLowerCase())
+    )
+  )
+  const seoRoutes: MetadataRoute.Sitemap = ALL_LOCATIONS.slice(0, 30).flatMap((location) =>
+    prioritySubjects.map((subject) => ({
+      url: `${baseUrl}/tutors/${toSeoSlug(location)}/${toSeoSlug(subject)}`,
+      changeFrequency: 'monthly' as const,
+      priority: 0.65,
+    }))
+  )
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   // Keep deploys from failing if admin-only env vars are missing in a new environment.
   if (!supabaseUrl || !serviceRoleKey) {
-    return staticRoutes
+    return [...staticRoutes, ...seoRoutes]
   }
 
   try {
@@ -60,8 +79,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.8,
       }))
 
-    return [...staticRoutes, ...tutorRoutes]
+    return [...staticRoutes, ...seoRoutes, ...tutorRoutes]
   } catch {
-    return staticRoutes
+    return [...staticRoutes, ...seoRoutes]
   }
 }

@@ -167,7 +167,7 @@ export async function POST(request: Request) {
 
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id,family_id,tutor_id,subjects,hours_per_month,status')
+        .select('*')
         .eq('id', payment.booking_id)
         .maybeSingle<PaymentBookingRow>()
 

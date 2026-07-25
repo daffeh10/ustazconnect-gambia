@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if (completedPayment) {
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id,family_id,tutor_id,subjects,hours_per_month,status')
+        .select('*')
         .eq('id', bookingId)
         .eq('family_id', familyId)
         .maybeSingle<PaymentBookingRow>()
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     if (payment.status === 'completed') {
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id,family_id,tutor_id,subjects,hours_per_month,status')
+        .select('*')
         .eq('id', bookingId)
         .eq('family_id', familyId)
         .maybeSingle<PaymentBookingRow>()
