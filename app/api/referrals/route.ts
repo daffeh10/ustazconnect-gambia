@@ -13,7 +13,12 @@ export async function POST(request: Request) {
     const referredContact = getString(body?.referredContact)
     const referredType = getString(body?.referredType) === 'tutor' ? 'tutor' : 'family'
 
-    if (!referredName || !referredContact) {
+    if (
+      !referredName ||
+      !referredContact ||
+      referredName.length > 120 ||
+      referredContact.length > 200
+    ) {
       return NextResponse.json({ error: 'Name and contact are required.' }, { status: 400 })
     }
 

@@ -1,11 +1,10 @@
 'use client'
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 
 interface ReportModalProps {
-  reportedUserId: string
+  tutorId: string
   tutorName: string
 }
 
@@ -17,12 +16,9 @@ const REPORT_REASONS = [
   'Other',
 ]
 
-export default function ReportModal({ reportedUserId, tutorName }: ReportModalProps) {
-  const [supabase] = useState(() => createClient())
-  const { user, role, isLoading: isAuthLoading, openAuthModal } = useAuth()
+export default function ReportModal({ tutorId, tutorName }: ReportModalProps) {
+  const { user, openAuthModal } = useAuth()
 
-  const [reporterId, setReporterId] = useState('')
-  const [reporterType, setReporterType] = useState('user')
   const [showModal, setShowModal] = useState(false)
   const [pendingOpenAfterAuth, setPendingOpenAfterAuth] = useState(false)
   const [showToast, setShowToast] = useState(false)
@@ -34,40 +30,10 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    let isMounted = true
-
-    async function syncReportAuthState() {
-      if (isAuthLoading) return
-
-      try {
-        if (!isMounted || !user) {
-          setReporterId('')
-          setReporterType('user')
-          return
-        }
-
-        const metadataRole = role === 'guest' ? 'user' : role
-
-        setReporterId(user.id)
-        setReporterType(metadataRole)
-      } catch (err) {
-        console.error(err)
-        if (isMounted) {
-          setReporterId('')
-          setReporterType('user')
-        }
-      }
-    }
-
-    void syncReportAuthState()
-
     return () => {
-      isMounted = false
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current)
-      }
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     }
-  }, [isAuthLoading, role, supabase, user])
+  }, [])
 
   useEffect(() => {
     if (!pendingOpenAfterAuth || !user) return
@@ -87,7 +53,7 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!reporterId) {
+    if (!user) {
       setError('Please sign in before submitting a report.')
       return
     }
@@ -101,17 +67,15 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
     setIsSubmitting(true)
 
     try {
-      const { error: insertError } = await supabase.from('reports').insert([
-        {
-          reporter_id: reporterId,
-          reporter_type: reporterType,
-          reported_user_id: reportedUserId,
-          reason,
-          details: details.trim() || null,
-        },
-      ])
-
-      if (insertError) throw insertError
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutorId, reason, details }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not submit your report.')
+      }
 
       setShowModal(false)
       setReason('')
@@ -126,37 +90,7 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
       }, 4000)
     } catch (err) {
       console.error(err)
-      const message =
-        typeof err === 'object' &&
-        err !== null &&
-        'message' in err &&
-        typeof (err as { message?: unknown }).message === 'string'
-          ? (err as { message: string }).message.toLowerCase()
-          : ''
-      const code =
-        typeof err === 'object' &&
-        err !== null &&
-        'code' in err &&
-        typeof (err as { code?: unknown }).code === 'string'
-          ? (err as { code: string }).code.toLowerCase()
-          : ''
-
-      if (
-        code === '42p01' ||
-        code === 'pgrst205' ||
-        message.includes('does not exist') ||
-        message.includes('could not find the table')
-      ) {
-        setError('Reporting is not configured yet. Please create the reports table in Supabase first.')
-      } else if (
-        code === '42501' ||
-        message.includes('row-level security') ||
-        message.includes('permission denied')
-      ) {
-        setError('Report submission is blocked by database permissions. Please re-check the reports policy in Supabase.')
-      } else {
-        setError('Could not submit your report. Please try again.')
-      }
+      setError(err instanceof Error ? err.message : 'Could not submit your report. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -227,6 +161,7 @@ export default function ReportModal({ reportedUserId, tutorName }: ReportModalPr
                 </label>
                 <textarea
                   id="report-details"
+                  maxLength={2000}
                   value={details}
                   onChange={(event) => setDetails(event.target.value)}
                   rows={4}

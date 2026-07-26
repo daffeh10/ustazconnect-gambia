@@ -24,7 +24,7 @@ interface TutorRow {
 }
 
 function formatMoney(value: number) {
-  return `D${value.toLocaleString()}`
+  return `GMD ${value.toLocaleString()}`
 }
 
 function getPaymentTitle(status: string | null) {
@@ -83,7 +83,7 @@ export default function PaymentPage() {
         }
 
         const { data: tutorData, error: tutorError } = await supabase
-          .from('tutor_profiles')
+          .from('public_tutors')
           .select('id,name')
           .eq('id', bookingData.tutor_id)
           .maybeSingle<TutorRow>()

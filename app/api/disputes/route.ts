@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const lessonId = getString(body?.lessonId)
     const reason = getString(body?.reason)
 
-    if (!reason || (!bookingId && !lessonId)) {
+    if (!reason || reason.length > 2_000 || (!bookingId && !lessonId)) {
       return NextResponse.json({ error: 'Please explain the issue.' }, { status: 400 })
     }
 

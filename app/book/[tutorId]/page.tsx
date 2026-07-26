@@ -84,9 +84,8 @@ export default function BookTutorPage() {
     async function loadPage() {
       try {
         const { data: tutorData, error: tutorError } = await supabase
-          .from('tutor_profiles')
+          .from('public_tutors')
           .select('id,name,location,subjects,hourly_rate,available_days,profile_photo_url,offers_online,verification_status,created_at')
-          .eq('is_approved', true)
           .eq('id', tutorId)
           .maybeSingle<TutorProfile>()
 
@@ -113,10 +112,9 @@ export default function BookTutorPage() {
         }
 
         const { data: packageData, error: packageError } = await supabase
-          .from('tutor_packages')
+          .from('public_tutor_packages')
           .select('id,title,description,frequency_per_week,hours_per_visit,monthly_price,additional_child_amount')
           .eq('tutor_id', tutorId)
-          .eq('is_active', true)
           .order('monthly_price', { ascending: true })
 
         if (packageError) {
@@ -713,7 +711,7 @@ export default function BookTutorPage() {
               </div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Request sent to {tutor.name}!</h1>
               <p className="text-gray-600">
-                {tutor.name} has 48 hours to respond. We&apos;ll notify you by WhatsApp.
+                {tutor.name} has 48 hours to respond. We&apos;ll notify you by email.
               </p>
               <Link
                 href="/find-tutor"

@@ -5,8 +5,15 @@ import { useRouter } from 'next/navigation'
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
-import { computeLessonEarning, lessonHoursFromMinutes } from '@/lib/pricing'
+import {
+  allocateMonthlyLessonEarning,
+  computeLessonEarning,
+  lessonHoursFromMinutes,
+  lessonsForBooking,
+  lessonsForPackage,
+} from '@/lib/pricing'
 import { computePayableSummary } from '@/lib/payouts'
+import { buildTutorConnectWhatsappMessage, buildWhatsappLink } from '@/lib/whatsapp'
 import ImageUpload from '@/app/components/ImageUpload'
 import DocumentUpload from '@/app/components/DocumentUpload'
 import type { DocumentType } from '@/app/components/DocumentUpload'
@@ -100,6 +107,10 @@ interface BookingRow {
   preferred_days: string[] | null
   status: string | null
   created_at: string
+  booking_type?: string | null
+  pricing_model?: string | null
+  frequency_per_week?: number | null
+  hours_per_visit?: number | null
 }
 
 interface PayoutRow {
@@ -112,6 +123,7 @@ interface PayoutRow {
   period_start: string | null
   period_end: string | null
   lessons_count: number | null
+  payout_type: string | null
   requested_at: string
   completed_at: string | null
 }
@@ -259,7 +271,7 @@ export default function DashboardPage() {
     try {
       const { data, error: bookingsFetchError } = await supabase
         .from('bookings')
-        .select('id,tutor_id,family_id,family_name,family_phone,subjects,hours_per_month,hourly_rate,monthly_total,service_fee,grand_total,special_requests,preferred_days,status,created_at')
+        .select('id,tutor_id,family_id,family_name,family_phone,subjects,hours_per_month,hourly_rate,monthly_total,service_fee,grand_total,special_requests,preferred_days,status,created_at,booking_type,pricing_model,frequency_per_week,hours_per_visit')
         .eq('tutor_id', tutorProfileId)
         .order('created_at', { ascending: false })
 
@@ -287,7 +299,7 @@ export default function DashboardPage() {
     try {
       const { data, error: lessonsFetchError } = await supabase
         .from('lessons')
-        .select('id,booking_id,tutor_id,family_id,lesson_number,duration_minutes,subject,status,tutor_notes,completed_at,created_at')
+        .select('id,booking_id,tutor_id,family_id,lesson_number,duration_minutes,subject,status,tutor_notes,completed_at,scheduled_at,meeting_link,created_at')
         .eq('tutor_id', tutorProfileId)
         .order('booking_id', { ascending: true })
         .order('lesson_number', { ascending: true })
@@ -310,7 +322,7 @@ export default function DashboardPage() {
     try {
       const { data, error: payoutsFetchError } = await supabase
         .from('payouts')
-        .select('id,tutor_id,amount,commission_deducted,wave_reference,status,period_start,period_end,lessons_count,requested_at,completed_at')
+        .select('id,tutor_id,amount,commission_deducted,wave_reference,status,period_start,period_end,lessons_count,payout_type,requested_at,completed_at')
         .eq('tutor_id', tutorProfileId)
         .order('requested_at', { ascending: false })
 
@@ -326,7 +338,7 @@ export default function DashboardPage() {
   }, [supabase])
 
   function formatMoney(value: number) {
-    return `D${value.toLocaleString()}`
+    return `GMD ${value.toLocaleString()}`
   }
 
   function formatRelativeTime(dateString: string) {
@@ -811,10 +823,28 @@ export default function DashboardPage() {
       if (!booking || booking.status !== 'active') return null
 
       const lessonHours = lessonHoursFromMinutes(lesson.duration_minutes)
-      const { gross: grossAmount, commission: commissionAmount, net: netAmount } = computeLessonEarning({
-        hourlyRate: booking.hourly_rate,
-        lessonHours,
-      })
+      const expectedLessons =
+        booking.pricing_model === 'package'
+          ? lessonsForPackage(booking.frequency_per_week ?? 0)
+          : lessonsForBooking(booking.hours_per_month)
+      const authoritativeAllocation =
+        expectedLessons > 0 && lesson.lesson_number <= expectedLessons
+          ? allocateMonthlyLessonEarning({
+              monthlyTotal: booking.monthly_total,
+              lessonsCount: expectedLessons,
+              lessonNumber: lesson.lesson_number,
+            })
+          : null
+      const {
+        gross: grossAmount,
+        commission: commissionAmount,
+        net: netAmount,
+      } =
+        authoritativeAllocation ||
+        computeLessonEarning({
+          hourlyRate: booking.hourly_rate,
+          lessonHours,
+        })
 
       return {
         ...lesson,
@@ -831,7 +861,10 @@ export default function DashboardPage() {
     .sort((a, b) => new Date(a.completedAtSortable).getTime() - new Date(b.completedAtSortable).getTime())
 
   const completedPayoutLessonCount = payouts.reduce((sum, payout) => {
-    if (payout.status === 'completed') {
+    if (
+      payout.status === 'completed' &&
+      (!payout.payout_type || payout.payout_type === 'regular')
+    ) {
       return sum + (payout.lessons_count || 0)
     }
     return sum
@@ -1098,6 +1131,30 @@ export default function DashboardPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{booking.family_name}</h3>
                       <p className="text-emerald-700 mt-1">{booking.family_phone || 'No phone provided'}</p>
+                      {buildWhatsappLink(
+                        booking.family_phone,
+                        buildTutorConnectWhatsappMessage(
+                          'Booking request',
+                          `Hi ${booking.family_name}, I am responding to your tutoring request.`
+                        )
+                      ) && (
+                        <a
+                          href={
+                            buildWhatsappLink(
+                              booking.family_phone,
+                              buildTutorConnectWhatsappMessage(
+                                'Booking request',
+                                `Hi ${booking.family_name}, I am responding to your tutoring request.`
+                              )
+                            ) || '#'
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex min-h-12 items-center text-sm font-medium text-emerald-700 hover:text-emerald-800"
+                        >
+                          Message on WhatsApp
+                        </a>
+                      )}
                     </div>
                     <p className="text-sm text-gray-500">{formatRelativeTime(booking.created_at)}</p>
                   </div>
@@ -1761,6 +1818,30 @@ export default function DashboardPage() {
                         <p className="text-sm text-gray-500">{formatInquiryDate(inquiry.created_at)}</p>
                       </div>
                       <p className="text-emerald-700 mt-1">{inquiry.family_phone || 'No phone provided'}</p>
+                      {buildWhatsappLink(
+                        inquiry.family_phone,
+                        buildTutorConnectWhatsappMessage(
+                          'Tutor inquiry',
+                          `Hi ${inquiry.family_name || 'there'}, I am responding to your TutorConnect inquiry.`
+                        )
+                      ) && (
+                        <a
+                          href={
+                            buildWhatsappLink(
+                              inquiry.family_phone,
+                              buildTutorConnectWhatsappMessage(
+                                'Tutor inquiry',
+                                `Hi ${inquiry.family_name || 'there'}, I am responding to your TutorConnect inquiry.`
+                              )
+                            ) || '#'
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex min-h-12 items-center text-sm font-medium text-emerald-700 hover:text-emerald-800"
+                        >
+                          Message on WhatsApp
+                        </a>
+                      )}
                       {inquiry.message ? (
                         <p className="mt-3 text-gray-700 whitespace-pre-wrap">{inquiry.message}</p>
                       ) : (

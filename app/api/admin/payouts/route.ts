@@ -9,6 +9,7 @@ interface PayoutRow {
   tutor_id: string
   amount: number
   lessons_count: number | null
+  payout_type: string | null
   requested_at: string
 }
 
@@ -29,7 +30,7 @@ export async function GET() {
     const supabase = createAdminClient()
     const { data: payouts, error: payoutsError } = await supabase
       .from('payouts')
-      .select('id,tutor_id,amount,lessons_count,requested_at')
+      .select('id,tutor_id,amount,lessons_count,payout_type,requested_at')
       .eq('status', 'pending')
       .order('requested_at', { ascending: true })
 
@@ -83,18 +84,24 @@ export async function PATCH(request: Request) {
     const payoutId = typeof body?.payoutId === 'string' ? body.payoutId.trim() : ''
     const waveReference = typeof body?.waveReference === 'string' ? body.waveReference.trim() : ''
 
-    if (!payoutId || !waveReference) {
+    if (!payoutId || !waveReference || waveReference.length > 200) {
       return NextResponse.json({ error: 'Wave reference is required.' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
-    const { data: payout } = await supabase
+    const { data: payout, error: payoutError } = await supabase
       .from('payouts')
       .select('id,tutor_id,amount,lessons_count')
       .eq('id', payoutId)
+      .eq('status', 'pending')
       .maybeSingle<{ id: string; tutor_id: string; amount: number; lessons_count: number | null }>()
 
-    const { error } = await supabase
+    if (payoutError) throw payoutError
+    if (!payout) {
+      return NextResponse.json({ error: 'Pending payout not found.' }, { status: 404 })
+    }
+
+    const { data: updatedPayout, error } = await supabase
       .from('payouts')
       .update({
         status: 'completed',
@@ -102,37 +109,41 @@ export async function PATCH(request: Request) {
         completed_at: new Date().toISOString(),
       })
       .eq('id', payoutId)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle<{ id: string }>()
 
     if (error) throw error
+    if (!updatedPayout) {
+      return NextResponse.json({ error: 'This payout has already been processed.' }, { status: 409 })
+    }
 
-    if (payout) {
-      const { data: tutor } = await supabase
-        .from('tutor_profiles')
-        .select('name,email')
-        .eq('id', payout.tutor_id)
-        .maybeSingle<{ name: string | null; email: string | null }>()
+    const { data: tutor } = await supabase
+      .from('tutor_profiles')
+      .select('name,email')
+      .eq('id', payout.tutor_id)
+      .maybeSingle<{ name: string | null; email: string | null }>()
 
-      if (tutor?.email) {
-        await sendEmail({
-          to: tutor.email,
-          subject: 'TutorConnect payout completed',
-          text: composeEmail([
-            `Hi ${tutor.name || 'Tutor'},`,
-            '',
-            `Your payout of GMD ${payout.amount.toLocaleString()} has been marked paid.`,
-            `Reference: ${waveReference}`,
-          ]),
-        })
-      }
-
-      await writeAdminAuditLog({
-        admin,
-        action: 'payout.completed',
-        targetType: 'payout',
-        targetId: payout.id,
-        metadata: { waveReference, amount: payout.amount },
+    if (tutor?.email) {
+      await sendEmail({
+        to: tutor.email,
+        subject: 'TutorConnect payout completed',
+        text: composeEmail([
+          `Hi ${tutor.name || 'Tutor'},`,
+          '',
+          `Your payout of GMD ${payout.amount.toLocaleString()} has been marked paid.`,
+          `Reference: ${waveReference}`,
+        ]),
       })
     }
+
+    await writeAdminAuditLog({
+      admin,
+      action: 'payout.completed',
+      targetType: 'payout',
+      targetId: payout.id,
+      metadata: { waveReference, amount: payout.amount },
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

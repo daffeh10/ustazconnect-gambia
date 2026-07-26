@@ -16,6 +16,7 @@ export interface SendEmailResult {
 const RESEND_API_URL = 'https://api.resend.com/emails'
 const DEFAULT_FROM = 'TutorConnect Gambia <notifications@tutorconnectgambia.com>'
 const DEFAULT_REPLY_TO = 'tutorconnectgambia@gmail.com'
+const EMAIL_TIMEOUT_MS = 5_000
 
 function getEmailFromAddress() {
   return process.env.RESEND_FROM_EMAIL || DEFAULT_FROM
@@ -42,8 +43,11 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), EMAIL_TIMEOUT_MS)
     const response = await fetch(RESEND_API_URL, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -55,7 +59,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
         text: input.text,
         reply_to: input.replyTo || DEFAULT_REPLY_TO,
       }),
-    })
+    }).finally(() => clearTimeout(timeoutId))
 
     if (!response.ok) {
       const detail = await response.text()
@@ -66,7 +70,11 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     return { sent: true, skipped: false }
   } catch (error) {
     console.error('sendEmail failed', error)
-    return { sent: false, skipped: false, error: 'Email could not be sent.' }
+    const message =
+      error instanceof DOMException && error.name === 'AbortError'
+        ? 'Email provider timed out.'
+        : 'Email could not be sent.'
+    return { sent: false, skipped: false, error: message }
   }
 }
 

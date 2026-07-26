@@ -43,17 +43,28 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         const { data: admin } = await supabase
           .from('admin_users')
-          .select('name,role')
+          .select('name,role,is_active')
           .eq('user_id', user.id)
-          .maybeSingle<{ name: string | null; role: string | null }>()
+          .maybeSingle<{ name: string | null; role: string | null; is_active: boolean | null }>()
+
+        if (isMounted && admin?.is_active === false) {
+          await supabase.auth.signOut()
+          router.replace('/admin/login')
+          return
+        }
 
         if (isMounted && admin) {
           if (admin.name) setAdminName(admin.name)
-          setAdminRole(
-            admin.role === 'owner' || admin.role === 'quran_verifier'
-              ? admin.role
-              : 'admin'
-          )
+          if (
+            admin.role === 'owner' ||
+            admin.role === 'admin' ||
+            admin.role === 'quran_verifier'
+          ) {
+            setAdminRole(admin.role)
+          } else {
+            await supabase.auth.signOut()
+            router.replace('/admin/login')
+          }
         }
       } catch (error) {
         console.error('Failed to load admin profile', error)
@@ -65,7 +76,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false
     }
-  }, [pathname, supabase])
+  }, [pathname, router, supabase])
 
   useEffect(() => {
     if (adminRole === 'quran_verifier' && pathname !== '/admin/quran') {

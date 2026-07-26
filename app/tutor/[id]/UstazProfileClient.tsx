@@ -17,7 +17,6 @@ import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-revie
 
 interface UstazProfile {
   id: string
-  user_id?: string | null
   name: string
   location: string
   subjects: string[]
@@ -49,7 +48,7 @@ interface ReviewRow {
 
 const RECENT_VIEWED_KEY = 'rv_tutors'
 const LEGACY_PUBLIC_TUTOR_PROFILE_SELECT =
-  'id,user_id,name,location,subjects,experience_years,hourly_rate,bio,available_days,available_times,profile_photo_url,verification_status,average_rating,created_at'
+  'id,name,location,subjects,experience_years,hourly_rate,bio,available_days,available_times,profile_photo_url,verification_status,average_rating,created_at'
 const ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT =
   `${LEGACY_PUBLIC_TUTOR_PROFILE_SELECT},offers_online,languages,areas_covered,age_groups,education`
 
@@ -90,20 +89,18 @@ export default function UstazProfileClient({ id }: { id: string }) {
     async function fetchUstaz() {
       try {
         const primaryResult = await supabase
-          .from('tutor_profiles')
+          .from('public_tutors')
           .select(ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT)
           .eq('id', id)
-          .eq('is_approved', true)
           .single()
         let data = (primaryResult.data ?? null) as UstazProfile | null
         let error = primaryResult.error
 
         if (error) {
           const fallbackResult = await supabase
-            .from('tutor_profiles')
+            .from('public_tutors')
             .select(LEGACY_PUBLIC_TUTOR_PROFILE_SELECT)
             .eq('id', id)
-            .eq('is_approved', true)
             .single()
 
           data = (fallbackResult.data ?? null) as UstazProfile | null
@@ -439,9 +436,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
               </button>
             </div>
 
-            {ustaz.user_id && (
-              <ReportModal reportedUserId={ustaz.user_id} tutorName={publicTutorName} />
-            )}
+            <ReportModal tutorId={ustaz.id} tutorName={publicTutorName} />
           </div>
         </div>
       </main>

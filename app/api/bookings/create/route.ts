@@ -3,6 +3,7 @@ import { composeEmail, sendEmail } from '@/lib/email'
 import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 
 interface TutorRow {
   id: string
@@ -10,6 +11,9 @@ interface TutorRow {
   email: string | null
   hourly_rate: number | null
   offers_online?: boolean | null
+  subjects: string[] | null
+  verification_status: string | null
+  created_at: string | null
 }
 
 interface TutorPackageRow {
@@ -55,7 +59,19 @@ export async function POST(request: Request) {
     const hoursPerMonth = getPositiveInteger(body?.hoursPerMonth, 8)
     const childrenCount = getPositiveInteger(body?.childrenCount, 1)
 
-    if (!tutorId || !selectedSubject || !familyName) {
+    if (
+      !tutorId ||
+      !selectedSubject ||
+      !familyName ||
+      selectedSubject.length > 100 ||
+      familyName.length > 120 ||
+      familyPhone.length > 50 ||
+      specialRequests.length > 2_000 ||
+      timezone.length > 100 ||
+      preferredDays.length > 7 ||
+      preferredDays.some((day) => day.length > 30) ||
+      childrenCount > 10
+    ) {
       return NextResponse.json({ error: 'Missing booking details.' }, { status: 400 })
     }
 
@@ -73,14 +89,26 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
     const { data: tutor, error: tutorError } = await supabase
       .from('tutor_profiles')
-      .select('id,name,email,hourly_rate,offers_online')
+      .select('id,name,email,hourly_rate,offers_online,subjects,verification_status,created_at')
       .eq('id', tutorId)
       .eq('is_approved', true)
+      .eq('is_active', true)
       .maybeSingle<TutorRow>()
 
     if (tutorError) throw tutorError
     if (!tutor) {
       return NextResponse.json({ error: 'Tutor not found or not available.' }, { status: 404 })
+    }
+    if (
+      !isTutorPubliclyVisible({
+        verificationStatus: tutor.verification_status,
+        createdAt: tutor.created_at,
+      })
+    ) {
+      return NextResponse.json({ error: 'Tutor not found or not available.' }, { status: 404 })
+    }
+    if (!(tutor.subjects || []).includes(selectedSubject)) {
+      return NextResponse.json({ error: 'This tutor does not offer the selected subject.' }, { status: 400 })
     }
 
     if (lessonFormat === 'online' && tutor.offers_online === false) {

@@ -11,6 +11,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const notes = getString(body?.notes)
+    if (notes.length > 2_000) {
+      return NextResponse.json({ error: 'Notes are too long.' }, { status: 400 })
+    }
     const authSupabase = await createServerClient()
     const {
       data: { user },
@@ -28,12 +31,7 @@ export async function POST(request: Request) {
       status: 'submitted',
     })
 
-    if (error) {
-      const message = error.message.toLowerCase()
-      if (!message.includes('privacy_requests') && !message.includes('does not exist') && !message.includes('schema cache')) {
-        throw error
-      }
-    }
+    if (error) throw error
 
     await sendEmail({
       to: 'tutorconnectgambia@gmail.com',

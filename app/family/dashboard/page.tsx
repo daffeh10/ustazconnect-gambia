@@ -149,7 +149,7 @@ export default function FamilyDashboardPage() {
         const { data: lessonsData, error: lessonsLoadError } = await supabase
           .from('lessons')
           .select(
-            'id,booking_id,tutor_id,family_id,lesson_number,duration_minutes,subject,status,tutor_notes,completed_at,created_at'
+            'id,booking_id,tutor_id,family_id,lesson_number,duration_minutes,subject,status,tutor_notes,completed_at,scheduled_at,meeting_link,created_at'
           )
           .eq('family_id', user.id)
           .order('booking_id', { ascending: true })
@@ -164,7 +164,7 @@ export default function FamilyDashboardPage() {
         const uniqueTutorIds = Array.from(new Set(loadedLessons.map((lesson) => lesson.tutor_id).filter(Boolean)))
         if (uniqueTutorIds.length > 0) {
           const { data: tutorsData, error: tutorsLoadError } = await supabase
-            .from('tutor_profiles')
+            .from('public_tutors')
             .select('id,name')
             .in('id', uniqueTutorIds)
 

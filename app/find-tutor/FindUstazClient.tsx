@@ -65,18 +65,16 @@ function FindUstazInner() {
     async function fetchUstazs() {
       try {
         const primaryResult = await supabase
-          .from('tutor_profiles')
+          .from('public_tutors')
           .select(ENHANCED_PUBLIC_TUTOR_SELECT)
-          .eq('is_approved', true)
           .order('created_at', { ascending: false })
         let data = (primaryResult.data ?? null) as UstazProfile[] | null
         let error = primaryResult.error
 
         if (error) {
           const fallbackResult = await supabase
-            .from('tutor_profiles')
+            .from('public_tutors')
             .select(LEGACY_PUBLIC_TUTOR_SELECT)
-            .eq('is_approved', true)
             .order('created_at', { ascending: false })
 
           data = (fallbackResult.data ?? null) as UstazProfile[] | null
@@ -156,18 +154,16 @@ function FindUstazInner() {
 
       try {
         const primaryResult = await supabase
-          .from('tutor_profiles')
+          .from('public_tutors')
           .select(ENHANCED_PUBLIC_TUTOR_SELECT)
-          .eq('is_approved', true)
           .in('id', storedIds)
         let data = (primaryResult.data ?? null) as UstazProfile[] | null
         let error = primaryResult.error
 
         if (error) {
           const fallbackResult = await supabase
-            .from('tutor_profiles')
+            .from('public_tutors')
             .select(LEGACY_PUBLIC_TUTOR_SELECT)
-            .eq('is_approved', true)
             .in('id', storedIds)
 
           data = (fallbackResult.data ?? null) as UstazProfile[] | null

@@ -23,10 +23,9 @@ export async function generateMetadata({
   const supabase = await createClient()
 
   const { data: tutor } = await supabase
-    .from('tutor_profiles')
+    .from('public_tutors')
     .select('id,name,location,subjects,hourly_rate,bio,verification_status,created_at')
     .eq('id', id)
-    .eq('is_approved', true)
     .maybeSingle<TutorMetadataRow>()
 
   if (
@@ -47,7 +46,7 @@ export async function generateMetadata({
   const subjectText = subjects || 'multiple subjects'
   const hourlyRate =
     typeof tutor.hourly_rate === 'number' && Number.isFinite(tutor.hourly_rate)
-      ? `D${tutor.hourly_rate}/hour`
+      ? `GMD ${tutor.hourly_rate.toLocaleString()}/hour`
       : 'Competitive rates'
 
   return {

@@ -1,7 +1,6 @@
 'use client'
 
 import { FormEvent, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 export interface Lesson {
   id: string
@@ -14,6 +13,8 @@ export interface Lesson {
   status: string | null
   tutor_notes: string | null
   completed_at: string | null
+  scheduled_at?: string | null
+  meeting_link?: string | null
   created_at: string
 }
 
@@ -36,37 +37,84 @@ function formatLessonDate(dateString: string | null) {
   })
 }
 
+function toLocalDateTimeValue(dateString: string | null | undefined) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return ''
+  const timezoneOffset = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16)
+}
+
 export default function LessonCard({ lesson, viewAs, totalLessons, onUpdated }: LessonCardProps) {
-  const [supabase] = useState(() => createClient())
   const [isExpanded, setIsExpanded] = useState(false)
   const [notes, setNotes] = useState(lesson.tutor_notes || '')
+  const [scheduledAt, setScheduledAt] = useState(toLocalDateTimeValue(lesson.scheduled_at))
+  const [meetingLink, setMeetingLink] = useState(lesson.meeting_link || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isScheduling, setIsScheduling] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   async function handleComplete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
+    setMessage('')
     setIsSubmitting(true)
 
     try {
-      const { error: updateError } = await supabase
-        .from('lessons')
-        .update({
-          status: 'completed',
-          tutor_notes: notes.trim() || null,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', lesson.id)
-
-      if (updateError) throw updateError
+      const response = await fetch('/api/lessons/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId: lesson.id, notes }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not complete this lesson.')
+      }
 
       setIsExpanded(false)
       onUpdated?.()
     } catch (err) {
       console.error(err)
-      setError('Could not update this lesson. Please try again.')
+      setError(err instanceof Error ? err.message : 'Could not update this lesson.')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function handleSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+    setIsScheduling(true)
+
+    try {
+      const response = await fetch('/api/lessons/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lessonId: lesson.id,
+          scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : '',
+          meetingLink,
+        }),
+      })
+      const payload = (await response.json()) as {
+        ok?: boolean
+        error?: string
+        scheduledAt?: string
+        meetingLink?: string | null
+      }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not schedule this lesson.')
+      }
+
+      setMessage('Lesson schedule saved.')
+      onUpdated?.()
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Could not schedule this lesson.')
+    } finally {
+      setIsScheduling(false)
     }
   }
 
@@ -87,6 +135,21 @@ export default function LessonCard({ lesson, viewAs, totalLessons, onUpdated }: 
             Lesson {lesson.lesson_number} {isCompleted ? `— ${formatLessonDate(lesson.completed_at)}` : '— upcoming'}
           </p>
           {lesson.subject && <p className="text-sm text-gray-600 mt-1">{lesson.subject}</p>}
+          {lesson.scheduled_at && (
+            <p className="mt-1 text-sm text-gray-600">
+              Scheduled for {new Date(lesson.scheduled_at).toLocaleString('en-GB')}
+            </p>
+          )}
+          {lesson.meeting_link && (
+            <a
+              href={lesson.meeting_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex text-sm font-medium text-emerald-700 underline"
+            >
+              Open meeting link
+            </a>
+          )}
           {lesson.tutor_notes && (
             <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
               {lesson.tutor_notes}
@@ -127,7 +190,56 @@ export default function LessonCard({ lesson, viewAs, totalLessons, onUpdated }: 
           )}
         </div>
       ) : (
-        <div className="mt-4">
+        <div className="mt-4 space-y-4">
+          <form onSubmit={handleSchedule} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-2">
+            <div>
+              <label htmlFor={`scheduled-at-${lesson.id}`} className="mb-1 block text-sm font-medium text-gray-700">
+                Lesson date and time
+              </label>
+              <input
+                id={`scheduled-at-${lesson.id}`}
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor={`meeting-link-${lesson.id}`} className="mb-1 block text-sm font-medium text-gray-700">
+                Meeting link
+              </label>
+              <input
+                id={`meeting-link-${lesson.id}`}
+                type="url"
+                value={meetingLink}
+                onChange={(event) => setMeetingLink(event.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                placeholder="https://meet.google.com/..."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                disabled={isScheduling}
+                className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+              >
+                {isScheduling ? 'Saving...' : 'Save Schedule'}
+              </button>
+            </div>
+          </form>
+
+          {message && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {message}
+            </div>
+          )}
+          {error && !isExpanded && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
           {!isExpanded ? (
             <button
               type="button"

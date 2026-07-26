@@ -59,11 +59,11 @@ export default function ReferralsPage() {
           </div>
           <div>
             <label htmlFor="referred-name" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input id="referred-name" value={referredName} onChange={(event) => setReferredName(event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-emerald-500" />
+            <input id="referred-name" maxLength={120} required value={referredName} onChange={(event) => setReferredName(event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-emerald-500" />
           </div>
           <div>
             <label htmlFor="referred-contact" className="block text-sm font-medium text-gray-700 mb-1">Phone or email</label>
-            <input id="referred-contact" value={referredContact} onChange={(event) => setReferredContact(event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-emerald-500" />
+            <input id="referred-contact" maxLength={200} required value={referredContact} onChange={(event) => setReferredContact(event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-emerald-500" />
           </div>
           <button type="submit" disabled={isSubmitting} className="rounded-lg bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
             {isSubmitting ? 'Submitting...' : 'Submit Referral'}

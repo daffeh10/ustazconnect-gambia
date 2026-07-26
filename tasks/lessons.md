@@ -17,3 +17,6 @@ Format: `- YYYY-MM-DD — <the rule>. (why: <what went wrong>)`
 - 2026-06-29 — `tutor_profiles.is_approved` / `verification_status` are locked by a
   DB trigger to the service role; set them only in `/api/admin/*`. (why: the RLS
   UPDATE policy let tutors self-approve and self-award badges.)
+- 2026-07-26 — Verify security patch versions against the official release and
+  run lint after dependency overrides. (why: an assumed patch and incompatible
+  transitive override were corrected before shipping.)

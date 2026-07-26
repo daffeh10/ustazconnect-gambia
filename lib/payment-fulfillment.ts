@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { composeEmail, sendEmail } from '@/lib/email'
-import { lessonsForBooking } from '@/lib/pricing'
+import { lessonsForBooking, lessonsForPackage, PRICING } from '@/lib/pricing'
 
 export interface PaymentBookingRow {
   id: string
@@ -10,6 +10,9 @@ export interface PaymentBookingRow {
   hours_per_month: number
   status: string | null
   booking_type?: string | null
+  pricing_model?: string | null
+  frequency_per_week?: number | null
+  hours_per_visit?: number | null
   lesson_format?: string | null
   timezone?: string | null
 }
@@ -18,15 +21,28 @@ export async function ensureLessonsForBooking(
   supabase: ReturnType<typeof createAdminClient>,
   booking: PaymentBookingRow
 ) {
-  const totalLessons = booking.booking_type === 'trial' ? 1 : lessonsForBooking(booking.hours_per_month)
+  const totalLessons =
+    booking.booking_type === 'trial'
+      ? 1
+      : booking.pricing_model === 'package'
+        ? lessonsForPackage(booking.frequency_per_week ?? 0)
+        : lessonsForBooking(booking.hours_per_month)
 
   if (totalLessons <= 0) return
+
+  const durationMinutes =
+    booking.booking_type === 'trial'
+      ? 45
+      : booking.pricing_model === 'package' && booking.hours_per_visit
+        ? Math.max(30, Math.round(booking.hours_per_visit * 60))
+        : PRICING.defaultLessonMinutes
 
   const lessonRows = Array.from({ length: totalLessons }, (_, index) => ({
     booking_id: booking.id,
     tutor_id: booking.tutor_id,
     family_id: booking.family_id,
     lesson_number: index + 1,
+    duration_minutes: durationMinutes,
     subject: booking.subjects?.[0] || null,
     status: 'scheduled',
     booking_type: booking.booking_type || 'monthly',
@@ -55,6 +71,7 @@ export async function ensureLessonsForBooking(
       tutor_id: lesson.tutor_id,
       family_id: lesson.family_id,
       lesson_number: lesson.lesson_number,
+      duration_minutes: lesson.duration_minutes,
       subject: lesson.subject,
       status: lesson.status,
     }))

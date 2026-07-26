@@ -97,6 +97,7 @@ export default function AccountSettingsPage() {
               <label htmlFor="delete-notes" className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
               <textarea
                 id="delete-notes"
+                maxLength={2000}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 rows={4}

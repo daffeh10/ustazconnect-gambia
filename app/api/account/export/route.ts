@@ -60,6 +60,44 @@ export async function GET() {
     if (lessonsAsTutor.error) throw lessonsAsTutor.error
     if (payouts.error) throw payouts.error
 
+    const [
+      referrals,
+      disputes,
+      privacyRequests,
+      tutorPackages,
+      quranVerifications,
+      tutorDocuments,
+      inquiriesAsTutor,
+    ] = await Promise.all([
+      supabase.from('referrals').select('*').eq('referrer_user_id', user.id),
+      supabase.from('disputes').select('*').eq('reporter_user_id', user.id),
+      supabase.from('privacy_requests').select('*').eq('user_id', user.id),
+      tutorId
+        ? supabase.from('tutor_packages').select('*').eq('tutor_id', tutorId)
+        : Promise.resolve({ data: [], error: null }),
+      tutorId
+        ? supabase.from('quran_verifications').select('*').eq('tutor_id', tutorId)
+        : Promise.resolve({ data: [], error: null }),
+      tutorId
+        ? supabase.from('tutor_documents').select('*').eq('tutor_id', tutorId)
+        : Promise.resolve({ data: [], error: null }),
+      tutorId
+        ? supabase.from('inquiries').select('*').eq('tutor_id', tutorId)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    for (const result of [
+      referrals,
+      disputes,
+      privacyRequests,
+      tutorPackages,
+      quranVerifications,
+      tutorDocuments,
+      inquiriesAsTutor,
+    ]) {
+      if (result.error) throw result.error
+    }
+
     return NextResponse.json({
       exportedAt: new Date().toISOString(),
       user: {
@@ -78,6 +116,13 @@ export async function GET() {
       payouts: payouts.data,
       reviews: reviews.data,
       reports: reports.data,
+      referrals: referrals.data,
+      disputes: disputes.data,
+      privacyRequests: privacyRequests.data,
+      tutorPackages: tutorPackages.data,
+      quranVerifications: quranVerifications.data,
+      tutorDocuments: tutorDocuments.data,
+      inquiriesAsTutor: inquiriesAsTutor.data,
     })
   } catch (error) {
     console.error('account export failed', error)

@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
+import { writeAdminAuditLog } from '@/lib/admin-audit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
+
+const REPORT_STATUSES = new Set(['pending', 'reviewing', 'resolved', 'dismissed'])
 
 export async function GET() {
   try {
     const { admin } = await getAdminContext()
-    if (!hasAdminRole(admin, ['owner', 'admin'])) {
+    if (!admin || !hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -27,7 +30,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const { admin } = await getAdminContext()
-    if (!hasAdminRole(admin, ['owner', 'admin'])) {
+    if (!admin || !hasAdminRole(admin, ['owner', 'admin'])) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -36,13 +39,13 @@ export async function PATCH(request: Request) {
     const status = typeof body?.status === 'string' ? body.status.trim().toLowerCase() : ''
     const adminNotes = typeof body?.adminNotes === 'string' ? body.adminNotes.trim() : ''
 
-    if (!reportId || !status) {
+    if (!reportId || !REPORT_STATUSES.has(status) || adminNotes.length > 2_000) {
       return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
     const resolvedAt = status === 'pending' ? null : new Date().toISOString()
-    const { error } = await supabase
+    const { data: updatedReport, error } = await supabase
       .from('reports')
       .update({
         status,
@@ -50,8 +53,21 @@ export async function PATCH(request: Request) {
         resolved_at: resolvedAt,
       })
       .eq('id', reportId)
+      .select('id')
+      .maybeSingle<{ id: string }>()
 
     if (error) throw error
+    if (!updatedReport) {
+      return NextResponse.json({ error: 'Report not found.' }, { status: 404 })
+    }
+
+    await writeAdminAuditLog({
+      admin,
+      action: 'report.updated',
+      targetType: 'report',
+      targetId: reportId,
+      metadata: { status },
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

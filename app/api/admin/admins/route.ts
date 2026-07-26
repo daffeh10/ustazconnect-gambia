@@ -18,9 +18,9 @@ function getString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function parseRole(value: string): AdminRole {
-  if (value === 'owner' || value === 'quran_verifier') return value
-  return 'admin'
+function parseRole(value: string): AdminRole | null {
+  if (value === 'owner' || value === 'admin' || value === 'quran_verifier') return value
+  return null
 }
 
 export async function GET() {
@@ -53,13 +53,17 @@ export async function GET() {
 
     if (error) throw error
 
-    return NextResponse.json({
-      admins: (rows ?? []).map((row) => ({
+    const admins = (rows ?? []).map((row) => {
+      const role = normalizeAdminRole(row.role)
+      if (!role) throw new Error(`Admin ${row.id} has an invalid role.`)
+      return {
         ...row,
-        role: normalizeAdminRole(row.role),
+        role,
         is_active: row.is_active !== false,
-      })),
+      }
     })
+
+    return NextResponse.json({ admins })
   } catch (error) {
     console.error('admin users fetch failed', error)
     return NextResponse.json({ error: 'Could not load admins.' }, { status: 500 })
@@ -79,8 +83,11 @@ export async function POST(request: Request) {
     const suppliedUserId = getString(body?.userId)
     const role = parseRole(getString(body?.role))
 
-    if (!name || !email) {
-      return NextResponse.json({ error: 'Name and email are required.' }, { status: 400 })
+    if (!name || !email || !role) {
+      return NextResponse.json({ error: 'Name, email, and a valid role are required.' }, { status: 400 })
+    }
+    if (name.length > 120 || email.length > 320) {
+      return NextResponse.json({ error: 'Name or email is too long.' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
@@ -89,7 +96,7 @@ export async function POST(request: Request) {
     if (!userId) {
       const invite = await supabase.auth.admin.inviteUserByEmail(email, {
         redirectTo: buildPublicUrl('/admin/login'),
-        data: { role: 'admin', full_name: name },
+        data: { role, full_name: name },
       })
 
       if (invite.error) {
@@ -107,6 +114,17 @@ export async function POST(request: Request) {
 
     if (!userId) {
       return NextResponse.json({ error: 'Missing Supabase user ID for admin.' }, { status: 400 })
+    }
+
+    const { data: authUserData, error: authUserError } = await supabase.auth.admin.getUserById(userId)
+    if (authUserError || !authUserData.user) {
+      return NextResponse.json({ error: 'Supabase user not found.' }, { status: 400 })
+    }
+    if ((authUserData.user.email || '').toLowerCase() !== email) {
+      return NextResponse.json(
+        { error: 'The supplied user ID belongs to a different email address.' },
+        { status: 400 }
+      )
     }
 
     let insert = await supabase.from('admin_users').insert({
@@ -163,22 +181,70 @@ export async function PATCH(request: Request) {
     const action = getString(body?.action)
     const role = parseRole(getString(body?.role))
 
-    if (!adminId || !['disable', 'enable', 'role'].includes(action)) {
+    if (
+      !adminId ||
+      !['disable', 'enable', 'role'].includes(action) ||
+      (action === 'role' && !role)
+    ) {
       return NextResponse.json({ error: 'Invalid admin update.' }, { status: 400 })
     }
 
-    if (adminId === admin.id && action === 'disable') {
-      return NextResponse.json({ error: 'You cannot disable your own owner account.' }, { status: 400 })
+    if (
+      adminId === admin.id &&
+      (action === 'disable' || (action === 'role' && role !== 'owner'))
+    ) {
+      return NextResponse.json({ error: 'You cannot remove your own owner access.' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
+    const { data: target, error: targetError } = await supabase
+      .from('admin_users')
+      .select('id,role,is_active')
+      .eq('id', adminId)
+      .maybeSingle<{ id: string; role: string | null; is_active: boolean | null }>()
+
+    if (targetError) throw targetError
+    if (!target) return NextResponse.json({ error: 'Admin not found.' }, { status: 404 })
+
+    const targetRole = normalizeAdminRole(target.role)
+    if (!targetRole) {
+      return NextResponse.json({ error: 'The target admin has an invalid role.' }, { status: 409 })
+    }
+
+    const removesActiveOwner =
+      targetRole === 'owner' &&
+      target.is_active !== false &&
+      (action === 'disable' || (action === 'role' && role !== 'owner'))
+
+    if (removesActiveOwner) {
+      const { count, error: ownerCountError } = await supabase
+        .from('admin_users')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'owner')
+        .eq('is_active', true)
+
+      if (ownerCountError) throw ownerCountError
+      if ((count ?? 0) <= 1) {
+        return NextResponse.json(
+          { error: 'Add another active owner before removing the last owner.' },
+          { status: 400 }
+        )
+      }
+    }
+
     const updatePayload =
       action === 'role'
-        ? { role }
+        ? { role: role as AdminRole }
         : { is_active: action === 'enable' }
 
-    const { error } = await supabase.from('admin_users').update(updatePayload).eq('id', adminId)
+    const { data: updated, error } = await supabase
+      .from('admin_users')
+      .update(updatePayload)
+      .eq('id', adminId)
+      .select('id')
+      .maybeSingle<{ id: string }>()
     if (error) throw error
+    if (!updated) return NextResponse.json({ error: 'Admin not found.' }, { status: 404 })
 
     await writeAdminAuditLog({
       admin,

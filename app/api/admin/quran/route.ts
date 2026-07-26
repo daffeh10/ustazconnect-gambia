@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { composeEmail, sendEmail } from '@/lib/email'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -67,9 +68,26 @@ export async function PATCH(request: Request) {
     if (!verificationId || !['approve', 'reject'].includes(action)) {
       return NextResponse.json({ error: 'Invalid Quran verification update.' }, { status: 400 })
     }
+    if (action === 'reject' && !rejectionReason) {
+      return NextResponse.json({ error: 'A rejection reason is required.' }, { status: 400 })
+    }
 
     const supabase = createAdminClient()
-    const { error } = await supabase
+    const { data: existing, error: existingError } = await supabase
+      .from('quran_verifications')
+      .select('id,tutor_id,status')
+      .eq('id', verificationId)
+      .maybeSingle<{ id: string; tutor_id: string; status: string | null }>()
+
+    if (existingError) throw existingError
+    if (!existing) {
+      return NextResponse.json({ error: 'Quran verification not found.' }, { status: 404 })
+    }
+    if (existing.status !== 'pending') {
+      return NextResponse.json({ error: 'This submission has already been reviewed.' }, { status: 409 })
+    }
+
+    const { data: updated, error } = await supabase
       .from('quran_verifications')
       .update({
         status: action === 'approve' ? 'approved' : 'rejected',
@@ -79,8 +97,14 @@ export async function PATCH(request: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', verificationId)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle<{ id: string }>()
 
     if (error) throw error
+    if (!updated) {
+      return NextResponse.json({ error: 'This submission was updated elsewhere.' }, { status: 409 })
+    }
 
     await writeAdminAuditLog({
       admin,
@@ -89,6 +113,29 @@ export async function PATCH(request: Request) {
       targetId: verificationId,
       metadata: { rejectionReason },
     })
+
+    const { data: tutor } = await supabase
+      .from('tutor_profiles')
+      .select('name,email')
+      .eq('id', existing.tutor_id)
+      .maybeSingle<{ name: string | null; email: string | null }>()
+
+    if (tutor?.email) {
+      await sendEmail({
+        to: tutor.email,
+        subject:
+          action === 'approve'
+            ? 'Your TutorConnect Quran verification is approved'
+            : 'TutorConnect Quran verification update',
+        text: composeEmail([
+          `Hi ${tutor.name || 'Tutor'},`,
+          '',
+          action === 'approve'
+            ? 'Your Quran verification has been approved. Your eligible online Quran profile can now appear in the diaspora directory.'
+            : `Your Quran verification needs changes before approval. Reason: ${rejectionReason}`,
+        ]),
+      })
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {

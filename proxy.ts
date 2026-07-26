@@ -60,10 +60,6 @@ export async function proxy(request: NextRequest) {
       error: userError,
     } = await supabase.auth.getUser()
 
-    if (userError) {
-      throw userError
-    }
-
     if (!user) {
       if (adminRoute) {
         const adminLoginUrl = request.nextUrl.clone()
@@ -79,15 +75,23 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(loginUrl)
       }
     }
+    if (userError) {
+      throw userError
+    }
 
     if (adminRoute) {
       const { data: adminRow, error: adminError } = await supabase
         .from('admin_users')
-        .select('id')
+        .select('id,role,is_active')
         .eq('user_id', user!.id)
-        .maybeSingle()
+        .maybeSingle<{ id: string; role: string | null; is_active: boolean | null }>()
 
-      if (adminError || !adminRow) {
+      const hasValidRole =
+        adminRow?.role === 'owner' ||
+        adminRow?.role === 'admin' ||
+        adminRow?.role === 'quran_verifier'
+
+      if (adminError || !adminRow || adminRow.is_active === false || !hasValidRole) {
         const adminLoginUrl = request.nextUrl.clone()
         adminLoginUrl.pathname = '/admin/login'
         adminLoginUrl.searchParams.set('next', pathname)

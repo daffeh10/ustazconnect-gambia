@@ -6,10 +6,17 @@
 // belong to active bookings and have not already been reserved by an existing
 // pending/completed payout.
 
-import { computeLessonEarning, lessonHoursFromMinutes } from '@/lib/pricing'
+import {
+  allocateMonthlyLessonEarning,
+  computeLessonEarning,
+  lessonHoursFromMinutes,
+  lessonsForBooking,
+  lessonsForPackage,
+} from '@/lib/pricing'
 
 export interface PayoutLessonInput {
   booking_id: string
+  lesson_number?: number | null
   duration_minutes: number | null
   status: string | null
   completed_at: string | null
@@ -20,11 +27,16 @@ export interface PayoutBookingInfo {
   status: string | null
   hourly_rate: number | null
   booking_type?: string | null
+  pricing_model?: string | null
+  monthly_total?: number | null
+  hours_per_month?: number | null
+  frequency_per_week?: number | null
 }
 
 export interface PayoutReservationInput {
   status: string | null
   lessons_count: number | null
+  payout_type?: string | null
 }
 
 export interface PayableSummary {
@@ -64,11 +76,30 @@ export function computePayableSummary(params: {
       if (!booking || booking.status !== 'active') return null
       if (booking.booking_type === 'trial') return null
 
-      const lessonHours = lessonHoursFromMinutes(lesson.duration_minutes)
-      const { commission, net } = computeLessonEarning({
+      const lessonNumber = lesson.lesson_number ?? 0
+      const expectedLessons =
+        booking.pricing_model === 'package'
+          ? lessonsForPackage(booking.frequency_per_week ?? 0)
+          : lessonsForBooking(booking.hours_per_month ?? 0)
+
+      const authoritativeAllocation =
+        typeof booking.monthly_total === 'number' &&
+        booking.monthly_total > 0 &&
+        expectedLessons > 0 &&
+        lessonNumber > 0 &&
+        lessonNumber <= expectedLessons
+          ? allocateMonthlyLessonEarning({
+              monthlyTotal: booking.monthly_total,
+              lessonsCount: expectedLessons,
+              lessonNumber,
+            })
+          : null
+
+      const legacyAllocation = computeLessonEarning({
         hourlyRate: booking.hourly_rate ?? 0,
-        lessonHours,
+        lessonHours: lessonHoursFromMinutes(lesson.duration_minutes),
       })
+      const { commission, net } = authoritativeAllocation || legacyAllocation
 
       return {
         commission,
@@ -86,7 +117,8 @@ export function computePayableSummary(params: {
 
   // Lessons already claimed by a pending or completed payout are not payable again.
   const reservedLessonCount = existingPayouts.reduce((sum, payout) => {
-    if (payout.status === 'pending' || payout.status === 'completed') {
+    const isRegularPayout = !payout.payout_type || payout.payout_type === 'regular'
+    if (isRegularPayout && (payout.status === 'pending' || payout.status === 'completed')) {
       return sum + (payout.lessons_count || 0)
     }
     return sum

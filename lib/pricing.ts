@@ -109,7 +109,41 @@ export function lessonsForBooking(
   return Math.floor(hoursPerMonth / hoursPerLesson)
 }
 
+/** Number of visits represented by a four-week monthly package. */
+export function lessonsForPackage(frequencyPerWeek: number): number {
+  if (!Number.isFinite(frequencyPerWeek) || frequencyPerWeek <= 0) return 0
+  return Math.max(1, Math.round(frequencyPerWeek * 4))
+}
+
 /** Convert a lesson's duration to whole billable hours (minimum 1). */
 export function lessonHoursFromMinutes(durationMinutes: number | null | undefined): number {
   return Math.max(1, Math.round((durationMinutes ?? PRICING.defaultLessonMinutes) / 60))
+}
+
+function allocateWholeAmount(total: number, itemCount: number, itemNumber: number) {
+  if (itemCount <= 0 || itemNumber <= 0 || itemNumber > itemCount) return 0
+  const normalizedTotal = roundGmd(total)
+  const baseAmount = Math.floor(normalizedTotal / itemCount)
+  const remainder = normalizedTotal - baseAmount * itemCount
+  return baseAmount + (itemNumber <= remainder ? 1 : 0)
+}
+
+/**
+ * Allocate a paid monthly lesson total across its generated lessons. Across the
+ * full booking, the allocations always add back to the exact 5% commission and
+ * 95% tutor share, including package and sibling pricing.
+ */
+export function allocateMonthlyLessonEarning(params: {
+  monthlyTotal: number
+  lessonsCount: number
+  lessonNumber: number
+}): LessonEarning {
+  const commissionTotal = roundGmd(params.monthlyTotal * PRICING.tutorCommissionRate)
+  const netTotal = roundGmd(params.monthlyTotal) - commissionTotal
+
+  return {
+    gross: allocateWholeAmount(params.monthlyTotal, params.lessonsCount, params.lessonNumber),
+    commission: allocateWholeAmount(commissionTotal, params.lessonsCount, params.lessonNumber),
+    net: allocateWholeAmount(netTotal, params.lessonsCount, params.lessonNumber),
+  }
 }

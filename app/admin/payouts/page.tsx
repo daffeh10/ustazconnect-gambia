@@ -8,6 +8,7 @@ interface PendingPayout {
   tutor_phone: string
   amount: number
   lessons_count: number | null
+  payout_type: string | null
   requested_at: string
 }
 
@@ -127,11 +128,13 @@ export default function AdminPayoutsPage() {
               <div className="mt-4 grid sm:grid-cols-3 gap-4 text-sm">
                 <div className="rounded-lg bg-gray-50 px-4 py-3">
                   <p className="text-gray-500">Amount</p>
-                  <p className="font-semibold text-gray-900">D{payout.amount.toLocaleString()}</p>
+                  <p className="font-semibold text-gray-900">GMD {payout.amount.toLocaleString()}</p>
                 </div>
                 <div className="rounded-lg bg-gray-50 px-4 py-3">
-                  <p className="text-gray-500">Lessons</p>
-                  <p className="font-semibold text-gray-900">{payout.lessons_count || 0}</p>
+                  <p className="text-gray-500">Type</p>
+                  <p className="font-semibold capitalize text-gray-900">
+                    {payout.payout_type || 'regular'}
+                  </p>
                 </div>
                 <div className="rounded-lg bg-gray-50 px-4 py-3">
                   <p className="text-gray-500">Status</p>

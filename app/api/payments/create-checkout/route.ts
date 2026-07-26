@@ -117,10 +117,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
     }
 
-    // Never trust monetary values that originated in the browser. The booking row
-    // is inserted client-side, so its amounts could be tampered with. Recompute
-    // the charge from the tutor's authoritative hourly rate and only ever charge
-    // that server-computed amount.
+    // Recompute every charge from authoritative tutor/package data. This also
+    // protects older booking rows created before booking creation moved server-side.
     const { data: tutor, error: tutorError } = await supabase
       .from('tutor_profiles')
       .select('hourly_rate')

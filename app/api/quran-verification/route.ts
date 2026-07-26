@@ -10,6 +10,14 @@ function getString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 async function getTutorIdForSession() {
   const authSupabase = await createServerClient()
   const {
@@ -69,8 +77,40 @@ export async function POST(request: Request) {
     if (!recitationVideoUrl || !tajweedAssessment || !credentialSummary || !scholarReference) {
       return NextResponse.json({ error: 'All Quran verification fields are required.' }, { status: 400 })
     }
+    if (!isHttpsUrl(recitationVideoUrl)) {
+      return NextResponse.json({ error: 'Use a valid HTTPS recitation video link.' }, { status: 400 })
+    }
+    if (
+      recitationVideoUrl.length > 1000 ||
+      tajweedAssessment.length > 4000 ||
+      credentialSummary.length > 4000 ||
+      scholarReference.length > 1000
+    ) {
+      return NextResponse.json({ error: 'One or more verification fields are too long.' }, { status: 400 })
+    }
 
     const supabase = createAdminClient()
+    const { data: existing, error: existingError } = await supabase
+      .from('quran_verifications')
+      .select('id,status')
+      .eq('tutor_id', tutorId)
+      .in('status', ['pending', 'approved'])
+      .limit(1)
+      .maybeSingle<{ id: string; status: string }>()
+
+    if (existingError) throw existingError
+    if (existing) {
+      return NextResponse.json(
+        {
+          error:
+            existing.status === 'approved'
+              ? 'Your Quran verification is already approved.'
+              : 'Your Quran verification is already awaiting review.',
+        },
+        { status: 409 }
+      )
+    }
+
     const { error: insertError } = await supabase.from('quran_verifications').insert({
       tutor_id: tutorId,
       recitation_video_url: recitationVideoUrl,

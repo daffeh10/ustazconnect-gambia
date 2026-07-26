@@ -55,10 +55,11 @@ export async function getAdminContext() {
 
 export function hasAdminRole(admin: AdminProfile | null, allowedRoles: AdminRole[]) {
   if (!admin) return false
-  return allowedRoles.includes(normalizeAdminRole(admin.role))
+  const role = normalizeAdminRole(admin.role)
+  return role ? allowedRoles.includes(role) : false
 }
 
-export function normalizeAdminRole(role: string | null | undefined): AdminRole {
-  if (role === 'owner' || role === 'quran_verifier') return role
-  return 'admin'
+export function normalizeAdminRole(role: string | null | undefined): AdminRole | null {
+  if (role === 'owner' || role === 'admin' || role === 'quran_verifier') return role
+  return null
 }
