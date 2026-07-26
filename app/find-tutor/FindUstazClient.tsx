@@ -5,7 +5,12 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { matchesLocationSearch } from '@/lib/location-search'
 import { matchesSubjectSearch } from '@/lib/subject-search'
-import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
+import {
+  formatPublicTutorName,
+  isTutorPubliclyVisible,
+  normalizeTutorVerificationStatus,
+} from '@/lib/tutor-review'
+import { buildWhatsappLink } from '@/lib/whatsapp'
 import Link from 'next/link'
 import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
@@ -49,6 +54,13 @@ function FindUstazInner() {
   const initialLocation = searchParams.get('location') || ''
   const initialSubject = searchParams.get('subject') || ''
   const initialOnlineOnly = searchParams.get('online') === '1'
+  const parsedInitialMaxRate = Number(searchParams.get('maxRate'))
+  const initialMaxRate =
+    Number.isFinite(parsedInitialMaxRate) &&
+    parsedInitialMaxRate >= 50 &&
+    parsedInitialMaxRate <= 500
+      ? parsedInitialMaxRate
+      : 500
 
   const [ustazs, setUstazs] = useState<UstazProfile[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -56,7 +68,7 @@ function FindUstazInner() {
 
   const [locationFilter, setLocationFilter] = useState(initialLocation)
   const [subjectFilter, setSubjectFilter] = useState(initialSubject)
-  const [maxRate, setMaxRate] = useState(500)
+  const [maxRate, setMaxRate] = useState(initialMaxRate)
   const [onlineOnly, setOnlineOnly] = useState(initialOnlineOnly)
   const [recentTutors, setRecentTutors] = useState<UstazProfile[]>([])
 
@@ -143,6 +155,17 @@ function FindUstazInner() {
   }, [])
 
   useEffect(() => {
+    const params = new URLSearchParams()
+    if (locationFilter.trim()) params.set('location', locationFilter.trim())
+    if (subjectFilter.trim()) params.set('subject', subjectFilter.trim())
+    if (maxRate < 500) params.set('maxRate', String(maxRate))
+    if (onlineOnly) params.set('online', '1')
+
+    const query = params.toString()
+    window.history.replaceState({}, '', query ? `/find-tutor?${query}` : '/find-tutor')
+  }, [locationFilter, maxRate, onlineOnly, subjectFilter])
+
+  useEffect(() => {
     async function loadRecentTutors() {
       if (typeof window === 'undefined') return
 
@@ -195,18 +218,54 @@ function FindUstazInner() {
   // We compute filteredUstazs directly here — no separate useState needed.
   // React re-renders automatically whenever ustazs, locationFilter, or
   // subjectFilter changes, so this always stays up to date.
-  const filteredUstazs = ustazs.filter((u) => {
-    const locationMatch = matchesLocationSearch(u.location, locationFilter)
+  const filteredUstazs = ustazs.filter((tutor) => {
+    const locationMatch = matchesLocationSearch(tutor.location, locationFilter)
 
-    // Subject: if no filter chosen, every tutor passes.
-    // .some() checks each subject in the array one by one.
-    const subjectMatch = matchesSubjectSearch(u.subjects, subjectFilter)
+    const subjectMatch = matchesSubjectSearch(tutor.subjects, subjectFilter)
 
-    const rateMatch = maxRate >= 500 || (u.hourly_rate || 0) <= maxRate
-    const onlineMatch = !onlineOnly || Boolean(u.offers_online)
+    const rateMatch = maxRate >= 500 || (tutor.hourly_rate || 0) <= maxRate
+    const onlineMatch = !onlineOnly || Boolean(tutor.offers_online)
 
     return locationMatch && subjectMatch && rateMatch && onlineMatch
+  }).sort((firstTutor, secondTutor) => {
+    const normalizedSubject = subjectFilter.trim().toLowerCase()
+    const normalizedLocation = locationFilter.trim().toLowerCase()
+    const exactSubjectScore = (tutor: UstazProfile) =>
+      normalizedSubject &&
+      (tutor.subjects || []).some((subject) => subject.toLowerCase() === normalizedSubject)
+        ? 1
+        : 0
+    const exactLocationScore = (tutor: UstazProfile) =>
+      normalizedLocation && tutor.location.toLowerCase() === normalizedLocation ? 1 : 0
+    const verificationScore = (tutor: UstazProfile) => {
+      const status = normalizeTutorVerificationStatus(tutor.verification_status)
+      if (status === 'qualification_verified') return 3
+      if (status === 'profile_reviewed') return 2
+      return 1
+    }
+    const profileScore = (tutor: UstazProfile) =>
+      Number(Boolean(tutor.profile_photo_url)) +
+      Number(Boolean(tutor.bio?.trim())) +
+      Number((tutor.languages || []).length > 0)
+
+    return (
+      exactSubjectScore(secondTutor) - exactSubjectScore(firstTutor) ||
+      exactLocationScore(secondTutor) - exactLocationScore(firstTutor) ||
+      verificationScore(secondTutor) - verificationScore(firstTutor) ||
+      (secondTutor.review_count || 0) - (firstTutor.review_count || 0) ||
+      profileScore(secondTutor) - profileScore(firstTutor)
+    )
   })
+
+  const supportMessage = [
+    'Hello TutorConnect, I need help finding a tutor.',
+    subjectFilter.trim() ? `Subject: ${subjectFilter.trim()}.` : '',
+    locationFilter.trim() ? `Area: ${locationFilter.trim()}.` : '',
+  ].filter(Boolean).join(' ')
+  const supportWhatsappLink = buildWhatsappLink(
+    process.env.NEXT_PUBLIC_TUTORCONNECT_WHATSAPP,
+    supportMessage
+  )
 
   function parseAverageRating(value: number | string | null | undefined) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0
@@ -225,7 +284,7 @@ function FindUstazInner() {
       <main className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Find a Tutor</h1>
         <p className="text-gray-600 mb-8">
-          Browse our verified tutors and find the perfect match for your family.
+          Compare tutors by subject, area, price, availability, lesson format, and review level.
         </p>
 
         {recentTutors.length > 0 && (
@@ -251,11 +310,11 @@ function FindUstazInner() {
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 mt-3">
-                    D{tutor.hourly_rate?.toLocaleString() || '0'}/hour
+                    GMD {tutor.hourly_rate?.toLocaleString() || '0'}/hour
                   </p>
                   <Link
                     href={`/tutor/${tutor.id}`}
-                    className="inline-block mt-3 text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                    className="mt-3 inline-flex min-h-12 items-center text-sm font-medium text-emerald-600 hover:text-emerald-700"
                   >
                     View profile
                   </Link>
@@ -303,7 +362,7 @@ function FindUstazInner() {
                 className="w-full accent-emerald-600"
               />
               <p className="text-sm text-gray-500 mt-2">
-                {maxRate >= 500 ? 'Any rate' : `Up to D${maxRate}`}
+                {maxRate >= 500 ? 'Any rate' : `Up to GMD ${maxRate.toLocaleString()}`}
               </p>
             </div>
 
@@ -330,7 +389,7 @@ function FindUstazInner() {
                   setMaxRate(500)
                   setOnlineOnly(false)
                 }}
-                className="text-sm text-emerald-600 hover:underline"
+                className="inline-flex min-h-12 items-center text-sm text-emerald-600 hover:underline"
               >
                 Clear all filters
               </button>
@@ -340,9 +399,10 @@ function FindUstazInner() {
 
         {/* ── Loading ── */}
         {isLoading && (
-          <div className="text-center py-12">
-            <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-gray-600">Loading tutors...</p>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3" aria-label="Loading tutors">
+            {[1, 2, 3, 4, 5, 6].map((item) => (
+              <div key={item} className="h-80 animate-pulse rounded-lg border border-gray-200 bg-white" />
+            ))}
           </div>
         )}
 
@@ -366,21 +426,40 @@ function FindUstazInner() {
 
         {/* ── No results ── */}
         {!isLoading && !error && filteredUstazs.length === 0 && (
-          <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
             <p className="text-gray-600 mb-4">
-              No tutors found matching your criteria.
+              We do not have a tutor matching all these filters yet.
             </p>
-            <button
-              onClick={() => {
-                setLocationFilter('')
-                setSubjectFilter('')
-                setMaxRate(500)
-                setOnlineOnly(false)
-              }}
-              className="text-emerald-600 hover:text-emerald-700 font-medium"
-            >
-              Clear filters and show all
-            </button>
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <button
+                onClick={() => {
+                  setLocationFilter('')
+                  setSubjectFilter('')
+                  setMaxRate(500)
+                  setOnlineOnly(false)
+                }}
+                className="inline-flex min-h-12 items-center rounded-lg border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-800 hover:bg-gray-50"
+              >
+                Clear Filters
+              </button>
+              {supportWhatsappLink ? (
+                <a
+                  href={supportWhatsappLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-12 items-center rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
+                >
+                  Ask TutorConnect on WhatsApp
+                </a>
+              ) : (
+                <a
+                  href={`mailto:tutorconnectgambia@gmail.com?subject=${encodeURIComponent('Help finding a tutor')}&body=${encodeURIComponent(supportMessage)}`}
+                  className="inline-flex min-h-12 items-center rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
+                >
+                  Ask TutorConnect for Help
+                </a>
+              )}
+            </div>
           </div>
         )}
 
@@ -390,7 +469,7 @@ function FindUstazInner() {
             {filteredUstazs.map((ustaz) => (
               <div
                 key={ustaz.id}
-                className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition"
+                className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md"
               >
                 {/* Avatar — show photo or initial */}
                 <div className="flex items-center gap-4 mb-4">
@@ -480,7 +559,7 @@ function FindUstazInner() {
                 {/* Profile link */}
                 <Link
                   href={`/tutor/${ustaz.id}`}
-                  className="block w-full text-center bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 transition"
+                  className="flex min-h-12 w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-center text-white transition hover:bg-emerald-700"
                 >
                   View Profile
                 </Link>

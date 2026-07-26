@@ -21,7 +21,7 @@ interface RecentBooking {
 }
 
 function formatMoney(value: number) {
-  return `D${value.toLocaleString()}`
+  return `GMD ${value.toLocaleString()}`
 }
 
 function formatDate(dateString: string) {

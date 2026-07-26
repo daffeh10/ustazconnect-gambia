@@ -37,7 +37,7 @@ export async function generateMetadata({
   ) {
     return {
       title: 'Tutor Profile | TutorConnect Gambia',
-      description: 'Browse verified tutors across The Gambia on TutorConnect Gambia.',
+      description: 'Browse tutor profiles across The Gambia on TutorConnect Gambia.',
     }
   }
 
@@ -57,16 +57,19 @@ export async function generateMetadata({
     openGraph: {
       title: `${tutor.name} | TutorConnect Gambia`,
       description:
-        tutor.bio?.trim() || `Qualified tutor in ${location}, The Gambia`,
+        tutor.bio?.trim() || `Tutor profile in ${location}, The Gambia`,
     },
   }
 }
 
 export default async function UstazProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ lessonFormat?: string }>
 }) {
   const { id } = await params
-  return <UstazProfileClient id={id} />
+  const query = await searchParams
+  return <UstazProfileClient id={id} defaultLessonFormat={query.lessonFormat === 'online' ? 'online' : 'in_person'} />
 }

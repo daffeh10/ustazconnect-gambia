@@ -10,10 +10,10 @@ import StarRating from '@/app/components/StarRating'
 import ReviewCard from '@/app/components/ReviewCard'
 import LeaveReviewForm from '@/app/components/LeaveReviewForm'
 import ReportModal from '@/app/components/ReportModal'
-import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
 import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
+import { trackFunnelEvent } from '@/lib/funnel'
 
 interface UstazProfile {
   id: string
@@ -52,9 +52,14 @@ const LEGACY_PUBLIC_TUTOR_PROFILE_SELECT =
 const ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT =
   `${LEGACY_PUBLIC_TUTOR_PROFILE_SELECT},offers_online,languages,areas_covered,age_groups,education`
 
-export default function UstazProfileClient({ id }: { id: string }) {
+export default function UstazProfileClient({
+  id,
+  defaultLessonFormat,
+}: {
+  id: string
+  defaultLessonFormat: 'in_person' | 'online'
+}) {
   const router = useRouter()
-  const { user, openAuthModal } = useAuth()
   const [supabase] = useState(() => createClient())
   const [ustaz, setUstaz] = useState<UstazProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -137,17 +142,13 @@ export default function UstazProfileClient({ id }: { id: string }) {
     const normalizedIds = Array.isArray(currentIds) ? currentIds.filter((item) => typeof item === 'string') : []
     const nextIds = [id, ...normalizedIds.filter((storedId) => storedId !== id)].slice(0, 5)
     window.localStorage.setItem(RECENT_VIEWED_KEY, JSON.stringify(nextIds))
+    trackFunnelEvent('tutor_profile_viewed', { tutor_id: id })
   }, [id])
 
   function handleBookLesson() {
-    const bookingPath = `/book/${id}`
-
-    if (!user) {
-      openAuthModal(bookingPath)
-      return
-    }
-
-    router.push(bookingPath)
+    trackFunnelEvent('booking_started', { tutor_id: id })
+    const formatQuery = defaultLessonFormat === 'online' ? '?format=online' : ''
+    router.push(`/book/${id}${formatQuery}`)
   }
 
   // Loading state
@@ -155,9 +156,13 @@ export default function UstazProfileClient({ id }: { id: string }) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <div className="text-center py-12">
-          <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading profile...</p>
+        <div className="mx-auto max-w-4xl px-4 py-12" aria-label="Loading tutor profile">
+          <div className="h-48 animate-pulse rounded-t-lg bg-emerald-100" />
+          <div className="space-y-5 rounded-b-lg border border-t-0 border-gray-200 bg-white p-6">
+            <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
+            <div className="h-24 animate-pulse rounded bg-gray-100" />
+            <div className="h-40 animate-pulse rounded bg-gray-100" />
+          </div>
         </div>
       </div>
     )
@@ -256,7 +261,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
               </div>
               <div className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-gray-500 text-sm">Hourly Rate</p>
-                <p className="text-xl font-semibold text-gray-900">{ustaz.hourly_rate} Dalasi</p>
+                <p className="text-xl font-semibold text-gray-900">GMD {ustaz.hourly_rate.toLocaleString()}</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-gray-500 text-sm">Subjects</p>
@@ -432,7 +437,7 @@ export default function UstazProfileClient({ id }: { id: string }) {
                 onClick={handleBookLesson}
                 className="block w-full text-center bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition"
               >
-                Book Lesson
+                View Booking Options
               </button>
             </div>
 

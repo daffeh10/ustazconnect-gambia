@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ALL_LOCATIONS, SUBJECT_CATEGORIES } from '@/lib/constants'
+import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
+import SearchableMultiSelect from '@/app/components/SearchableMultiSelect'
+import { trackFunnelEvent } from '@/lib/funnel'
 import { buildPublicUrl, getFriendlyRegistrationError, passwordMeetsRequirements } from '@/lib/auth'
 import { TUTOR_REVIEW_CONTACT_EMAIL } from '@/lib/tutor-review'
 import {
@@ -49,6 +51,7 @@ export default function RegisterTutorPage() {
   const [resendMessage, setResendMessage] = useState('')
   const [error, setError] = useState('')
   const [isPhoneFieldUnlocked, setIsPhoneFieldUnlocked] = useState(false)
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -61,8 +64,97 @@ export default function RegisterTutorPage() {
     return () => window.clearTimeout(timer)
   }, [])
 
+  useEffect(() => {
+    trackFunnelEvent('tutor_registration_started')
+  }, [])
+
+  function validateAccountStep() {
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim()
+    const sanitizedPhone = sanitizeGambiaPhoneDigits(phone)
+
+    if (!trimmedName || !gender || !location || !trimmedEmail || !password || !confirmPassword) {
+      setError('Please complete all fields before continuing.')
+      return false
+    }
+
+    if (!isValidGambiaPhoneDigits(sanitizedPhone)) {
+      setError('Please enter a valid 7-digit Gambian phone number after +220.')
+      return false
+    }
+
+    if (!passwordMeetsRequirements(password)) {
+      setError('Password must be at least 8 characters long.')
+      return false
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return false
+    }
+
+    setError('')
+    return true
+  }
+
+  function validateTeachingStep() {
+    const parsedExperienceYears = experienceYears.trim() === '' ? 0 : Number(experienceYears)
+    const parsedHourlyRate = Number(hourlyRate)
+
+    if (!hourlyRate.trim()) {
+      setError('Please enter your hourly rate.')
+      return false
+    }
+
+    if (selectedSubjects.length === 0) {
+      setError('Please select at least one subject you can teach.')
+      return false
+    }
+
+    if (languages.length === 0) {
+      setError('Please select at least one language you can teach or communicate in.')
+      return false
+    }
+
+    if (Number.isNaN(parsedHourlyRate) || parsedHourlyRate <= 0) {
+      setError('Please enter a valid hourly rate greater than 0.')
+      return false
+    }
+
+    if (Number.isNaN(parsedExperienceYears) || parsedExperienceYears < 0) {
+      setError('Experience years must be a valid non-negative number.')
+      return false
+    }
+
+    setError('')
+    return true
+  }
+
+  function moveToStep(step: 1 | 2 | 3) {
+    setError('')
+    setCurrentStep(step)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+
+    if (currentStep === 1) {
+      if (validateAccountStep()) moveToStep(2)
+      return
+    }
+
+    if (currentStep === 2) {
+      if (validateTeachingStep()) moveToStep(3)
+      return
+    }
+
+    if (!validateAccountStep() || !validateTeachingStep()) return
+
+    if (!hasTutorConsent) {
+      setError('Please confirm your tutor profile details and agree to the platform terms.')
+      return
+    }
 
     const trimmedName = name.trim()
     const trimmedEmail = email.trim()
@@ -72,51 +164,6 @@ export default function RegisterTutorPage() {
     const parsedTravelRadiusKm = Number(travelRadiusKm) || 5
     const parsedHourlyRate = Number(hourlyRate)
     const consentGivenAt = new Date().toISOString()
-
-    if (!trimmedName || !gender || !location || !trimmedEmail || !password || !confirmPassword || !hourlyRate.trim()) {
-      setError('Please complete all fields before continuing.')
-      return
-    }
-
-    if (!isValidGambiaPhoneDigits(sanitizedPhone)) {
-      setError('Please enter a valid 7-digit Gambian phone number after +220.')
-      return
-    }
-
-    if (!passwordMeetsRequirements(password)) {
-      setError('Password must be at least 8 characters long.')
-      return
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-
-    if (selectedSubjects.length === 0) {
-      setError('Please select at least one subject you can teach.')
-      return
-    }
-
-    if (languages.length === 0) {
-      setError('Please select at least one language you can teach or communicate in.')
-      return
-    }
-
-    if (Number.isNaN(parsedHourlyRate) || parsedHourlyRate <= 0) {
-      setError('Please enter a valid hourly rate greater than 0.')
-      return
-    }
-
-    if (Number.isNaN(parsedExperienceYears) || parsedExperienceYears < 0) {
-      setError('Experience years must be a valid non-negative number.')
-      return
-    }
-
-    if (!hasTutorConsent) {
-      setError('Please confirm your tutor profile details and agree to the platform terms.')
-      return
-    }
 
     setError('')
     setResendMessage('')
@@ -165,6 +212,8 @@ export default function RegisterTutorPage() {
       if (!userId) {
         throw new Error('No user ID was returned after signup.')
       }
+
+      trackFunnelEvent('tutor_registration_completed')
 
       if (data.session) {
         // Email confirmation is disabled — user is already confirmed.
@@ -248,22 +297,6 @@ export default function RegisterTutorPage() {
     }
   }
 
-  function toggleSubject(subject: string) {
-    setSelectedSubjects((current) =>
-      current.includes(subject)
-        ? current.filter((item) => item !== subject)
-        : [...current, subject]
-    )
-  }
-
-  function toggleAreasCovered(area: string) {
-    setAreasCovered((current) =>
-      current.includes(area)
-        ? current.filter((item) => item !== area)
-        : [...current, area]
-    )
-  }
-
   function toggleLanguage(language: string) {
     setLanguages((current) =>
       current.includes(language)
@@ -288,15 +321,41 @@ export default function RegisterTutorPage() {
         </Link>
       </div>
 
-      <div className="max-w-xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+      <div className="max-w-xl mx-auto rounded-lg border border-gray-200 bg-white p-6 shadow-sm md:p-8">
         {!isSuccess ? (
           <>
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Register as Tutor</h1>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Create Your Tutor Account</h1>
             <p className="text-base text-gray-600 mb-8">
-              Create your tutor account and complete your profile after signup.
+              {currentStep === 1
+                ? 'Start with your account and contact details. You can then add the information families need when choosing a tutor.'
+                : currentStep === 2
+                  ? 'Tell families what you teach, where you can teach, and the learners you work with.'
+                  : 'Check your information before creating your account. You can update your profile and submit review documents from your tutor dashboard.'}
             </p>
 
+            <ol className="mb-8 grid grid-cols-3 gap-2" aria-label="Registration progress">
+              {[
+                [1, 'Account'],
+                [2, 'Teaching Profile'],
+                [3, 'Review'],
+              ].map(([step, label]) => {
+                const stepNumber = Number(step)
+                const isCurrent = currentStep === stepNumber
+                const isComplete = currentStep > stepNumber
+                return (
+                  <li key={step} className="min-w-0">
+                    <div className={`h-1.5 rounded-full ${isCurrent || isComplete ? 'bg-emerald-600' : 'bg-gray-200'}`} />
+                    <p className={`mt-2 text-xs font-medium sm:text-sm ${isCurrent ? 'text-emerald-700' : 'text-gray-500'}`}>
+                      {label}
+                    </p>
+                  </li>
+                )
+              })}
+            </ol>
+
             <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+              {currentStep === 1 && (
+                <div className="space-y-4">
               <input
                 type="text"
                 name="registration-username"
@@ -408,10 +467,13 @@ export default function RegisterTutorPage() {
                   We collect your main teaching area, not your exact home address, to protect your privacy.
                 </p>
               </div>
+                </div>
+              )}
 
+              {currentStep === 2 && (
               <div>
                 <label htmlFor="hourly-rate" className="block text-sm font-medium text-gray-700 mb-1">
-                  Hourly Rate (Dalasi) *
+                  Hourly Rate (GMD) *
                 </label>
                 <input
                   id="hourly-rate"
@@ -424,7 +486,10 @@ export default function RegisterTutorPage() {
                   required
                 />
               </div>
+              )}
 
+              {currentStep === 1 && (
+                <div className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email Address
@@ -477,7 +542,11 @@ export default function RegisterTutorPage() {
                   required
                 />
               </div>
+                </div>
+              )}
 
+              {currentStep === 2 && (
+                <div className="space-y-5">
               <div>
                 <label htmlFor="travel-radius" className="block text-sm font-medium text-gray-700 mb-1">
                   Travel Radius
@@ -496,31 +565,14 @@ export default function RegisterTutorPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Areas Covered</label>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_LOCATIONS.map((area) => {
-                    const isSelected = areasCovered.includes(area)
-                    return (
-                      <button
-                        key={area}
-                        type="button"
-                        onClick={() => toggleAreasCovered(area)}
-                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
-                          isSelected
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {area}
-                      </button>
-                    )
-                  })}
-                </div>
-                <p className="mt-2 text-sm text-gray-500">
-                  Select every area you are willing to travel to for in-person lessons.
-                </p>
-              </div>
+              <SearchableMultiSelect
+                label="Areas Covered"
+                options={ALL_LOCATIONS}
+                values={areasCovered}
+                onChange={setAreasCovered}
+                placeholder="Search and add teaching areas"
+                helperText="Add every area you are willing to travel to for in-person lessons."
+              />
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Languages You Can Teach / Communicate In *</label>
@@ -532,7 +584,7 @@ export default function RegisterTutorPage() {
                         key={language}
                         type="button"
                         onClick={() => toggleLanguage(language)}
-                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                        className={`min-h-12 px-3 py-2 rounded-full text-sm transition-colors ${
                           isSelected
                             ? 'bg-emerald-600 text-white'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -559,7 +611,7 @@ export default function RegisterTutorPage() {
                         key={ageGroup}
                         type="button"
                         onClick={() => toggleAgeGroup(ageGroup)}
-                        className={`px-3 py-2 rounded-full text-sm transition-colors ${
+                        className={`min-h-12 px-3 py-2 rounded-full text-sm transition-colors ${
                           isSelected
                             ? 'bg-emerald-600 text-white'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -634,38 +686,71 @@ export default function RegisterTutorPage() {
                 </label>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Subjects You Teach</label>
-                <div className="space-y-4">
-                  {SUBJECT_CATEGORIES.map((category) => (
-                    <div key={category.category}>
-                      <p className="text-sm font-medium text-gray-700 mb-2">{category.category}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {category.subjects.map((subject) => {
-                          const isSelected = selectedSubjects.includes(subject)
-                          return (
-                            <button
-                              key={subject}
-                              type="button"
-                              onClick={() => toggleSubject(subject)}
-                              className={`px-3 py-2 rounded-full text-sm transition-colors ${
-                                isSelected
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                              }`}
-                            >
-                              {subject}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
+              <SearchableMultiSelect
+                label="Subjects You Teach *"
+                options={ALL_SUBJECTS}
+                values={selectedSubjects}
+                onChange={setSelectedSubjects}
+                placeholder="Search and add subjects"
+                helperText="Add the subjects you are comfortable teaching."
+              />
                 </div>
-                <p className="mt-2 text-sm text-gray-500">
-                  Select all the subjects you are comfortable teaching.
-                </p>
-              </div>
+              )}
+
+              {currentStep === 3 && (
+                <div className="space-y-6">
+                  <section aria-labelledby="account-review-heading">
+                    <div className="flex items-center justify-between gap-4">
+                      <h2 id="account-review-heading" className="text-lg font-semibold text-gray-900">Account</h2>
+                      <button type="button" onClick={() => moveToStep(1)} className="min-h-11 font-medium text-emerald-700 hover:text-emerald-800">
+                        Edit
+                      </button>
+                    </div>
+                    <dl className="divide-y divide-gray-100 border-y border-gray-200 text-sm">
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Name</dt><dd className="text-right font-medium text-gray-900">{name}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Phone</dt><dd className="text-right font-medium text-gray-900">{formatGambiaPhoneFromDigits(sanitizeGambiaPhoneDigits(phone))}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Email</dt><dd className="break-all text-right font-medium text-gray-900">{email}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Main area</dt><dd className="text-right font-medium text-gray-900">{location}</dd></div>
+                    </dl>
+                  </section>
+
+                  <section aria-labelledby="teaching-review-heading">
+                    <div className="flex items-center justify-between gap-4">
+                      <h2 id="teaching-review-heading" className="text-lg font-semibold text-gray-900">Teaching Profile</h2>
+                      <button type="button" onClick={() => moveToStep(2)} className="min-h-11 font-medium text-emerald-700 hover:text-emerald-800">
+                        Edit
+                      </button>
+                    </div>
+                    <dl className="divide-y divide-gray-100 border-y border-gray-200 text-sm">
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Subjects</dt><dd className="max-w-xs text-right font-medium text-gray-900">{selectedSubjects.join(', ')}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Hourly rate</dt><dd className="text-right font-medium text-gray-900">GMD {Number(hourlyRate || 0).toLocaleString()}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Teaching areas</dt><dd className="max-w-xs text-right font-medium text-gray-900">{areasCovered.join(', ') || location}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Languages</dt><dd className="max-w-xs text-right font-medium text-gray-900">{languages.join(', ')}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Online lessons</dt><dd className="text-right font-medium text-gray-900">{offersOnline ? 'Yes' : 'No'}</dd></div>
+                    </dl>
+                  </section>
+
+                  <label className="flex items-start gap-3 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={hasTutorConsent}
+                      onChange={(event) => setHasTutorConsent(event.target.checked)}
+                      className="mt-1 h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      required
+                    />
+                    <span>
+                      I confirm that my profile details are accurate, I agree to be contacted for tutoring requests, and I accept the{' '}
+                      <Link href="/terms" className="text-emerald-700 hover:underline font-medium">
+                        Terms of Service
+                      </Link>{' '}
+                      and{' '}
+                      <Link href="/privacy" className="text-emerald-700 hover:underline font-medium">
+                        Privacy Policy
+                      </Link>
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -673,33 +758,30 @@ export default function RegisterTutorPage() {
                 </div>
               )}
 
-              <label className="flex items-start gap-3 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={hasTutorConsent}
-                  onChange={(event) => setHasTutorConsent(event.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                  required
-                />
-                <span>
-                  I confirm that my profile details are accurate, I agree to be contacted for tutoring requests, and I accept the{' '}
-                  <Link href="/terms" className="text-emerald-700 hover:underline font-medium">
-                    Terms of Service
-                  </Link>{' '}
-                  and{' '}
-                  <Link href="/privacy" className="text-emerald-700 hover:underline font-medium">
-                    Privacy Policy
-                  </Link>
-                </span>
-              </label>
-
-              <button
-                type="submit"
-                disabled={isLoading || !hasTutorConsent}
-                className="bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors w-full disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isLoading ? 'Creating account...' : 'Create Tutor Account'}
-              </button>
+              <div className={`grid gap-3 ${currentStep > 1 ? 'sm:grid-cols-2' : ''}`}>
+                {currentStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => moveToStep(currentStep === 3 ? 2 : 1)}
+                    className="min-h-12 rounded-lg border border-gray-300 bg-white px-6 py-3 font-medium text-gray-800 hover:bg-gray-50"
+                  >
+                    Back
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={isLoading || (currentStep === 3 && !hasTutorConsent)}
+                  className="min-h-12 w-full rounded-lg bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoading
+                    ? 'Creating account...'
+                    : currentStep === 1
+                      ? 'Continue to Teaching Profile'
+                      : currentStep === 2
+                        ? 'Review Details'
+                        : 'Create Tutor Account'}
+                </button>
+              </div>
             </form>
           </>
         ) : (

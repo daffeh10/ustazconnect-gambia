@@ -8,7 +8,7 @@ export default function Footer() {
           <div>
             <h3 className="text-white font-bold text-lg mb-4">TutorConnect Gambia</h3>
             <p className="text-sm">
-              Connecting Gambian families with trusted tutors since 2026.
+              Connecting Gambian families and students with tutors since 2026.
             </p>
           </div>
           <div>

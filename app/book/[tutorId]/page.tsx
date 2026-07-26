@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
+import { trackFunnelEvent } from '@/lib/funnel'
 
 interface TutorProfile {
   id: string
@@ -105,7 +106,10 @@ export default function BookTutorPage() {
         }
 
         setTutor(tutorData)
-        setLessonFormat('in_person')
+        const requestedFormat =
+          typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).get('format') === 'online'
+        setLessonFormat(requestedFormat && tutorData.offers_online ? 'online' : 'in_person')
         setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || '')
         if ((tutorData.subjects || []).length > 0) {
           setSelectedSubject(tutorData.subjects?.[0] || '')
@@ -299,6 +303,10 @@ export default function BookTutorPage() {
         window.sessionStorage.removeItem(getBookingDraftKey(tutorId))
       }
 
+      trackFunnelEvent('booking_request_sent', {
+        tutor_id: tutor.id,
+        booking_type: bookingType,
+      })
       setIsSuccess(true)
     } catch (err) {
       console.error(err)
@@ -323,10 +331,12 @@ export default function BookTutorPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-base text-gray-600">Loading booking page...</p>
+      <div className="min-h-screen bg-gray-50 px-4 py-12" aria-label="Loading booking options">
+        <div className="mx-auto max-w-3xl space-y-5 rounded-lg border border-gray-200 bg-white p-6">
+          <div className="h-16 w-64 animate-pulse rounded bg-gray-200" />
+          <div className="h-24 animate-pulse rounded bg-gray-100" />
+          <div className="h-32 animate-pulse rounded bg-gray-100" />
+          <div className="h-48 animate-pulse rounded bg-gray-100" />
         </div>
       </div>
     )
@@ -428,7 +438,7 @@ export default function BookTutorPage() {
                       />
                       <span>
                         <span className="block text-sm font-medium text-gray-900">Intro session</span>
-                        <span className="block text-sm text-gray-600">30-45 minutes. GMD 150 transport plus service fee.</span>
+                        <span className="block text-sm text-gray-600">A 45-minute first meeting. GMD 150 plus the service fee.</span>
                       </span>
                     </label>
                   </div>
@@ -611,7 +621,7 @@ export default function BookTutorPage() {
                             key={day}
                             type="button"
                             onClick={() => togglePreferredDay(day)}
-                            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                            className={`min-h-12 px-4 py-2 rounded-lg text-sm transition-colors ${
                               selected
                                 ? 'bg-emerald-600 text-white font-medium'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -668,18 +678,20 @@ export default function BookTutorPage() {
                 </div>
 
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm">
-                  <h2 className="text-base font-semibold text-gray-900 mb-3">Cost breakdown</h2>
+                  <h2 className="text-base font-semibold text-gray-900 mb-3">
+                    {bookingType === 'trial' ? 'Estimated Intro Session Cost' : 'Estimated Monthly Cost'}
+                  </h2>
                   <div className="space-y-2 text-gray-700">
                     <p className="flex justify-between gap-4">
-                      <span>Monthly total</span>
+                      <span>{bookingType === 'trial' ? 'Intro session' : 'Lesson cost'}</span>
                       <span className="font-medium">GMD {monthlyTotal.toLocaleString()}</span>
                     </p>
                     <p className="flex justify-between gap-4">
-                      <span>Service fee</span>
+                      <span>Service fee (3%)</span>
                       <span className="font-medium">GMD {serviceFee.toLocaleString()}</span>
                     </p>
                     <p className="flex justify-between gap-4 text-gray-900 font-semibold border-t border-emerald-200 pt-2">
-                      <span>Grand total</span>
+                      <span>Estimated total</span>
                       <span>GMD {grandTotal.toLocaleString()}</span>
                     </p>
                   </div>
@@ -709,9 +721,9 @@ export default function BookTutorPage() {
               <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-2xl mb-4">
                 ✓
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Request sent to {tutor.name}!</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Request sent</h1>
               <p className="text-gray-600">
-                {tutor.name} has 48 hours to respond. We&apos;ll notify you by email.
+                {tutor.name} has up to 48 hours to respond. We will email you when the booking status changes.
               </p>
               <Link
                 href="/find-tutor"

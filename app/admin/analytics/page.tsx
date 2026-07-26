@@ -26,11 +26,13 @@ interface AnalyticsPayload {
   revenue: ChartPoint[]
   topSubjects: ChartPoint[]
   topLocations: ChartPoint[]
+  funnel: ChartPoint[]
+  searchDemand: ChartPoint[]
   error?: string
 }
 
 function SkeletonCard() {
-  return <div className="h-72 animate-pulse rounded-xl bg-gray-200" />
+  return <div className="h-72 animate-pulse rounded-lg bg-gray-200" />
 }
 
 function ChartCard({
@@ -41,9 +43,9 @@ function ChartCard({
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6">
+    <section className="rounded-lg border border-gray-200 bg-white p-6">
       <h2 className="mb-4 text-lg font-semibold text-gray-900">{title}</h2>
-      <div className="h-[300px]">{children}</div>
+      <div className="h-72">{children}</div>
     </section>
   )
 }
@@ -94,20 +96,20 @@ export default function AdminAnalyticsPage() {
     }
   }, [])
 
-  const noDataMessage = error || 'Could not load data'
+  const noDataMessage = error || 'No activity recorded yet.'
 
   return (
     <div>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
         <p className="mt-2 text-gray-600">
-          Review signups, lesson completion, revenue, and tutor distribution trends.
+          Review signups, marketplace activity, lesson completion, revenue, and tutor distribution trends.
         </p>
       </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {Array.from({ length: 6 }).map((_, index) => (
+          {Array.from({ length: 8 }).map((_, index) => (
             <SkeletonCard key={index} />
           ))}
         </div>
@@ -161,7 +163,7 @@ export default function AdminAnalyticsPage() {
             )}
           </ChartCard>
 
-          <ChartCard title="Revenue Per Week (D)">
+          <ChartCard title="Revenue Per Week (GMD)">
             {!data ? (
               <EmptyChartState error={noDataMessage} />
             ) : (
@@ -170,7 +172,7 @@ export default function AdminAnalyticsPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <Tooltip formatter={(value) => `D${Number(value).toLocaleString()}`} />
+                  <Tooltip formatter={(value) => `GMD ${Number(value).toLocaleString()}`} />
                   <Line type="monotone" dataKey="value" stroke="#d97706" strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
@@ -218,6 +220,50 @@ export default function AdminAnalyticsPage() {
                   <Tooltip />
                   <Legend />
                   <Bar dataKey="value" fill="#0284c7" name="Tutors" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          <ChartCard title="Marketplace Funnel (Last 30 Days)">
+            {!data || data.funnel.every((point) => point.value === 0) ? (
+              <EmptyChartState error={noDataMessage} />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.funnel} layout="vertical" margin={{ left: 48 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    width={150}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#059669" name="Events" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          <ChartCard title="Most Searched Subjects (Last 30 Days)">
+            {!data || data.searchDemand.length === 0 ? (
+              <EmptyChartState error={noDataMessage} />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.searchDemand} layout="vertical" margin={{ left: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    width={130}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#0284c7" name="Searches" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

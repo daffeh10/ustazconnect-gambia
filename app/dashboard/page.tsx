@@ -1474,7 +1474,7 @@ export default function DashboardPage() {
 
                 <div>
                   <label htmlFor="hourly-rate" className="block text-sm font-medium text-gray-700 mb-1">
-                    Hourly Rate (Dalasi)
+                    Hourly Rate (GMD)
                   </label>
                   <input
                     id="hourly-rate"

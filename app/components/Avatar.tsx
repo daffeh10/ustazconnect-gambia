@@ -54,7 +54,7 @@ export default function Avatar({
           alt={label}
           width={styles.image}
           height={styles.image}
-          quality={60}
+          quality={75}
           className="h-full w-full object-cover rounded-full"
         />
       ) : (

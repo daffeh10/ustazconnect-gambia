@@ -26,6 +26,11 @@ interface ChartPoint {
   value: number
 }
 
+interface FunnelAnalyticsRow {
+  event_name: string
+  properties: Record<string, unknown> | null
+}
+
 function startOfWeek(date: Date) {
   const copy = new Date(date)
   const day = copy.getDay()
@@ -114,11 +119,15 @@ export async function GET() {
 
     const supabase = createAdminClient()
 
-    const [tutorsResult, familiesResult, lessonsResult, paymentsResult] = await Promise.all([
+    const [tutorsResult, familiesResult, lessonsResult, paymentsResult, funnelResult] = await Promise.all([
       supabase.from('tutor_profiles').select('created_at,subjects,location'),
       supabase.from('family_profiles').select('created_at'),
       supabase.from('lessons').select('completed_at').eq('status', 'completed'),
       supabase.from('payments').select('paid_at,total').eq('status', 'completed'),
+      supabase
+        .from('funnel_events')
+        .select('event_name,properties')
+        .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
     ])
 
     const errors = [
@@ -150,6 +159,28 @@ export async function GET() {
       tutors.map((row) => row.location ?? '').filter(Boolean),
       5
     )
+    const funnelRows = funnelResult.error
+      ? []
+      : (funnelResult.data ?? []) as FunnelAnalyticsRow[]
+    const funnelLabels: Record<string, string> = {
+      marketplace_search: 'Searches',
+      tutor_profile_viewed: 'Profile views',
+      booking_started: 'Booking starts',
+      booking_request_sent: 'Requests sent',
+      tutor_registration_started: 'Tutor registration starts',
+      tutor_registration_completed: 'Tutor registrations completed',
+    }
+    const funnel = Object.entries(funnelLabels).map(([eventName, label]) => ({
+      label,
+      value: funnelRows.filter((row) => row.event_name === eventName).length,
+    }))
+    const searchDemand = topCounts(
+      funnelRows
+        .filter((row) => row.event_name === 'marketplace_search')
+        .map((row) => row.properties?.subject)
+        .filter((subject): subject is string => typeof subject === 'string' && subject.trim().length > 0),
+      8
+    )
 
     return NextResponse.json({
       tutorSignups,
@@ -158,6 +189,8 @@ export async function GET() {
       revenue,
       topSubjects,
       topLocations,
+      funnel,
+      searchDemand,
     })
   } catch (error) {
     console.error('admin analytics failed', error)

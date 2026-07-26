@@ -375,7 +375,7 @@ export default function FamilyDashboardPage() {
           <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <h2 className="text-lg font-semibold text-gray-900">Find Tutors</h2>
             <p className="text-sm text-gray-600 mt-2">
-              Browse verified tutors by subject, location, and availability.
+              Compare tutors by subject, location, availability, and review level.
             </p>
             <Link
               href="/find-tutor"

@@ -484,3 +484,37 @@ revoke insert, update, delete on public.bookings from anon, authenticated;
 revoke insert, update, delete on public.lessons from anon, authenticated;
 revoke insert, update, delete on public.reports from anon, authenticated;
 revoke insert, update, delete on public.payouts from anon, authenticated;
+
+-- =============================================================================
+-- Marketplace UX: privacy-safe funnel events
+-- =============================================================================
+create table if not exists public.funnel_events (
+  id uuid primary key default gen_random_uuid(),
+  event_name text not null,
+  path text not null,
+  properties jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.funnel_events enable row level security;
+
+alter table public.funnel_events
+  drop constraint if exists funnel_events_event_name_check;
+alter table public.funnel_events
+  add constraint funnel_events_event_name_check
+  check (
+    event_name in (
+      'marketplace_search',
+      'service_selected',
+      'tutor_profile_viewed',
+      'booking_started',
+      'booking_request_sent',
+      'tutor_registration_started',
+      'tutor_registration_completed'
+    )
+  );
+
+revoke all on public.funnel_events from anon, authenticated;
+
+create index if not exists funnel_events_name_created_at_idx
+  on public.funnel_events (event_name, created_at desc);

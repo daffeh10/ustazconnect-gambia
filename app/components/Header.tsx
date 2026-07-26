@@ -54,7 +54,7 @@ export default function Header() {
           {/* Desktop Navigation */}
           <div className="hidden md:flex gap-4 items-center">
             <Link href="/find-tutor" className="text-gray-600 hover:text-emerald-700 transition">
-              Find Tutor
+              Find a Tutor
             </Link>
             <Link href="/online-quran" className="text-gray-600 hover:text-emerald-700 transition">
               Online Quran
@@ -97,7 +97,7 @@ export default function Header() {
           {/* Mobile menu button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden p-2 text-gray-600"
+            className="flex min-h-12 min-w-12 items-center justify-center text-gray-600 md:hidden"
             aria-label="Toggle menu"
           >
             {isMenuOpen ? (
@@ -120,7 +120,7 @@ export default function Header() {
               className="block text-gray-600 hover:text-emerald-700 transition py-2"
               onClick={() => setIsMenuOpen(false)}
             >
-              Find Tutor
+              Find a Tutor
             </Link>
             <Link
               href="/online-quran"
