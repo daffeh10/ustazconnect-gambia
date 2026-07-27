@@ -15,6 +15,7 @@ import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/app/components/Avatar'
 import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
 import { trackFunnelEvent } from '@/lib/funnel'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 
 interface UstazProfile {
   id: string
@@ -148,7 +149,10 @@ export default function UstazProfileClient({
 
   function handleBookLesson() {
     trackFunnelEvent('booking_started', { tutor_id: id })
-    const formatQuery = defaultLessonFormat === 'online' ? '?format=online' : ''
+    const formatQuery =
+      DIASPORA_QURAN_ENABLED && defaultLessonFormat === 'online'
+        ? '?format=online'
+        : ''
     router.push(`/book/${id}${formatQuery}`)
   }
 
@@ -230,7 +234,7 @@ export default function UstazProfileClient({
                 <div className="mt-2">
                   <VerificationBadge status={ustaz.verification_status} />
                 </div>
-                {ustaz.offers_online && (
+                {DIASPORA_QURAN_ENABLED && ustaz.offers_online && (
                   <div className="mt-2">
                     <span className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white">
                       Also available online

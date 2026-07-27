@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import { toSeoSlug } from '@/lib/seo-slugs'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 
 function getBaseUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://tutorconnectgambia.com').replace(/\/$/, '')
@@ -22,11 +23,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.9,
     },
-    {
-      url: `${baseUrl}/online-quran`,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
+    ...(DIASPORA_QURAN_ENABLED
+      ? [
+          {
+            url: `${baseUrl}/online-quran`,
+            changeFrequency: 'weekly' as const,
+            priority: 0.9,
+          },
+        ]
+      : []),
     {
       url: `${baseUrl}/register`,
       changeFrequency: 'monthly',

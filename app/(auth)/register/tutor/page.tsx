@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import SearchableMultiSelect from '@/app/components/SearchableMultiSelect'
 import { trackFunnelEvent } from '@/lib/funnel'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { buildPublicUrl, getFriendlyRegistrationError, passwordMeetsRequirements } from '@/lib/auth'
 import { TUTOR_REVIEW_CONTACT_EMAIL } from '@/lib/tutor-review'
 import {
@@ -189,7 +190,7 @@ export default function RegisterTutorPage() {
             age_groups: ageGroups,
             education: education || '',
             experience_years: parsedExperienceYears,
-            offers_online: offersOnline,
+            offers_online: DIASPORA_QURAN_ENABLED && offersOnline,
             consent_given_at: consentGivenAt,
           },
         },
@@ -238,7 +239,7 @@ export default function RegisterTutorPage() {
           languages,
           age_groups: ageGroups,
           education: education || '',
-          offers_online: offersOnline,
+          offers_online: DIASPORA_QURAN_ENABLED && offersOnline,
           consent_given_at: consentGivenAt,
         }
 
@@ -661,30 +662,34 @@ export default function RegisterTutorPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <label className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">I also offer online lessons</p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      Families will see an online badge on your profile and card.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setOffersOnline((current) => !current)}
-                    aria-pressed={offersOnline}
-                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
-                      offersOnline ? 'bg-emerald-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                        offersOnline ? 'translate-x-6' : 'translate-x-1'
+              {DIASPORA_QURAN_ENABLED && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <label className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        I also offer online lessons
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Families will see an online badge on your profile and card.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOffersOnline((current) => !current)}
+                      aria-pressed={offersOnline}
+                      className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
+                        offersOnline ? 'bg-emerald-600' : 'bg-gray-300'
                       }`}
-                    />
-                  </button>
-                </label>
-              </div>
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                          offersOnline ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
+              )}
 
               <SearchableMultiSelect
                 label="Subjects You Teach *"
@@ -726,7 +731,14 @@ export default function RegisterTutorPage() {
                       <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Hourly rate</dt><dd className="text-right font-medium text-gray-900">GMD {Number(hourlyRate || 0).toLocaleString()}</dd></div>
                       <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Teaching areas</dt><dd className="max-w-xs text-right font-medium text-gray-900">{areasCovered.join(', ') || location}</dd></div>
                       <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Languages</dt><dd className="max-w-xs text-right font-medium text-gray-900">{languages.join(', ')}</dd></div>
-                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Online lessons</dt><dd className="text-right font-medium text-gray-900">{offersOnline ? 'Yes' : 'No'}</dd></div>
+                      {DIASPORA_QURAN_ENABLED && (
+                        <div className="flex justify-between gap-4 py-3">
+                          <dt className="text-gray-500">Online lessons</dt>
+                          <dd className="text-right font-medium text-gray-900">
+                            {offersOnline ? 'Yes' : 'No'}
+                          </dd>
+                        </div>
+                      )}
                     </dl>
                   </section>
 

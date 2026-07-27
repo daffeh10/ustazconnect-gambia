@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ReactNode, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 
 type AdminRole = 'owner' | 'admin' | 'quran_verifier'
 
@@ -15,7 +16,15 @@ const NAV_ITEMS: Array<{ href: string; label: string; roles: AdminRole[] }> = [
   { href: '/admin/payouts', label: 'Payouts', roles: ['owner', 'admin'] },
   { href: '/admin/analytics', label: 'Analytics', roles: ['owner', 'admin'] },
   { href: '/admin/admins', label: 'Admins', roles: ['owner'] },
-  { href: '/admin/quran', label: 'Quran', roles: ['owner', 'admin', 'quran_verifier'] },
+  ...(DIASPORA_QURAN_ENABLED
+    ? [
+        {
+          href: '/admin/quran',
+          label: 'Quran',
+          roles: ['owner', 'admin', 'quran_verifier'] as AdminRole[],
+        },
+      ]
+    : []),
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 
 interface AdminRow {
   id: string
@@ -120,7 +121,9 @@ export default function AdminManagementPage() {
             <label htmlFor="admin-role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
             <select id="admin-role" value={role} onChange={(event) => setRole(event.target.value as AdminRow['role'])} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-emerald-500">
               <option value="admin">Admin</option>
-              <option value="quran_verifier">Quran Verifier</option>
+              {DIASPORA_QURAN_ENABLED && (
+                <option value="quran_verifier">Quran Verifier</option>
+              )}
               <option value="owner">Owner</option>
             </select>
           </div>
@@ -160,7 +163,12 @@ export default function AdminManagementPage() {
                       className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     >
                       <option value="admin">Admin</option>
-                      <option value="quran_verifier">Quran Verifier</option>
+                      {DIASPORA_QURAN_ENABLED && (
+                        <option value="quran_verifier">Quran Verifier</option>
+                      )}
+                      {!DIASPORA_QURAN_ENABLED && admin.role === 'quran_verifier' && (
+                        <option value="quran_verifier">Quran Verifier (deferred)</option>
+                      )}
                     </select>
                   )}
                   <button

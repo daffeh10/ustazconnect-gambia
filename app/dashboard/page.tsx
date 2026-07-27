@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import {
   allocateMonthlyLessonEarning,
   computeLessonEarning,
@@ -1595,30 +1596,35 @@ export default function DashboardPage() {
                 </select>
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <label className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">I also offer online lessons</p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      Families will see an online badge on your card and can request online lessons.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setOffersOnline((current) => !current)}
-                    aria-pressed={offersOnline}
-                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
-                      offersOnline ? 'bg-emerald-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                        offersOnline ? 'translate-x-6' : 'translate-x-1'
+              {DIASPORA_QURAN_ENABLED && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <label className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        I also offer online lessons
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Families will see an online badge on your card and can request
+                        online lessons.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOffersOnline((current) => !current)}
+                      aria-pressed={offersOnline}
+                      className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
+                        offersOnline ? 'bg-emerald-600' : 'bg-gray-300'
                       }`}
-                    />
-                  </button>
-                </label>
-              </div>
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                          offersOnline ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1776,7 +1782,9 @@ export default function DashboardPage() {
             </div>
 
             {profileId && <TutorPackageManager tutorId={profileId} />}
-            <QuranVerificationPanel canShow={Boolean(profileId) && teachesQuran} />
+            {DIASPORA_QURAN_ENABLED && (
+              <QuranVerificationPanel canShow={Boolean(profileId) && teachesQuran} />
+            )}
 
             <section className="mt-8 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

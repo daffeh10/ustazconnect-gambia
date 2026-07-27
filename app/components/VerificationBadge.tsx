@@ -42,7 +42,7 @@ export default function VerificationBadge({ status }: VerificationBadgeProps) {
 
   return (
     <span
-      className={`${badge.classes} inline-flex items-center rounded-sm px-2 py-1 text-xs font-semibold`}
+      className={`${badge.classes} inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium`}
       title={badge.description}
       aria-label={`${badge.text}: ${badge.description}`}
     >

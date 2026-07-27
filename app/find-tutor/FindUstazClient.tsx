@@ -19,6 +19,7 @@ import StarRating from '@/app/components/StarRating'
 import Avatar from '@/app/components/Avatar'
 import SearchableLocationInput from '@/app/components/SearchableLocationInput'
 import SearchableSubjectInput from '@/app/components/SearchableSubjectInput'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import {
   normalizeTutorSubject,
   normalizeTutorSubjects,
@@ -57,7 +58,8 @@ function FindUstazInner() {
   // we use that as the starting value. Otherwise start empty = show all.
   const initialLocation = searchParams.get('location') || ''
   const initialSubject = searchParams.get('subject') || ''
-  const initialOnlineOnly = searchParams.get('online') === '1'
+  const initialOnlineOnly =
+    DIASPORA_QURAN_ENABLED && searchParams.get('online') === '1'
   const parsedInitialMaxRate = Number(searchParams.get('maxRate'))
   const initialMaxRate =
     Number.isFinite(parsedInitialMaxRate) &&
@@ -332,7 +334,13 @@ function FindUstazInner() {
 
         {/* ── Filter bar ── */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-8">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div
+            className={
+              DIASPORA_QURAN_ENABLED
+                ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-4'
+                : 'grid gap-4 md:grid-cols-2 lg:grid-cols-3'
+            }
+          >
 
             {/* Location search */}
             <div>
@@ -372,17 +380,19 @@ function FindUstazInner() {
               </p>
             </div>
 
-            <div className="flex items-end">
-              <label className="flex w-full items-center justify-between rounded-lg border border-gray-300 px-4 py-3">
-                <span className="text-sm font-medium text-gray-700">Online available</span>
-                <input
-                  type="checkbox"
-                  checked={onlineOnly}
-                  onChange={(e) => setOnlineOnly(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                />
-              </label>
-            </div>
+            {DIASPORA_QURAN_ENABLED && (
+              <div className="flex items-end">
+                <label className="flex w-full items-center justify-between rounded-lg border border-gray-300 px-4 py-3">
+                  <span className="text-sm font-medium text-gray-700">Online available</span>
+                  <input
+                    type="checkbox"
+                    checked={onlineOnly}
+                    onChange={(e) => setOnlineOnly(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Clear button — only appears when a filter is active */}
@@ -494,7 +504,7 @@ function FindUstazInner() {
                     <p className="text-sm text-gray-500">{ustaz.location}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <VerificationBadge status={ustaz.verification_status} />
-                      {ustaz.offers_online && (
+                      {DIASPORA_QURAN_ENABLED && ustaz.offers_online && (
                         <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
                           Also available online
                         </span>

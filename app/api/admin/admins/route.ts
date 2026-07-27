@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { buildPublicUrl } from '@/lib/auth'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { getAdminContext, hasAdminRole, normalizeAdminRole, type AdminRole } from '@/lib/admin'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -19,7 +20,8 @@ function getString(value: unknown) {
 }
 
 function parseRole(value: string): AdminRole | null {
-  if (value === 'owner' || value === 'admin' || value === 'quran_verifier') return value
+  if (value === 'owner' || value === 'admin') return value
+  if (DIASPORA_QURAN_ENABLED && value === 'quran_verifier') return value
   return null
 }
 

@@ -8,7 +8,6 @@ interface SearchableSubjectInputProps {
   value: string
   onChange: (value: string) => void
   placeholder: string
-  variant?: 'default' | 'homepage'
 }
 
 export default function SearchableSubjectInput({
@@ -16,7 +15,6 @@ export default function SearchableSubjectInput({
   value,
   onChange,
   placeholder,
-  variant = 'default',
 }: SearchableSubjectInputProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -51,18 +49,9 @@ export default function SearchableSubjectInput({
     }
   }, [])
 
-  const isHomepage = variant === 'homepage'
-
   return (
-    <div ref={containerRef} className={`relative ${isHomepage ? '' : 'mb-4'}`}>
-      <label
-        htmlFor={inputId}
-        className={`block text-left ${
-          isHomepage
-            ? 'mb-2 text-xs font-bold uppercase text-gray-600'
-            : 'mb-2 font-medium text-gray-700'
-        }`}
-      >
+    <div ref={containerRef} className="relative mb-4">
+      <label htmlFor={inputId} className="mb-2 block text-left font-medium text-gray-700">
         {label}
       </label>
 
@@ -81,9 +70,7 @@ export default function SearchableSubjectInput({
           role="combobox"
           aria-expanded={isOpen}
           aria-controls={listboxId}
-          className={`w-full border border-gray-300 bg-white p-3 pr-20 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 ${
-            isHomepage ? 'min-h-12 rounded-sm text-sm' : 'rounded-lg'
-          }`}
+          className="w-full rounded-lg border border-gray-300 p-3 pr-20 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
         />
 
         {value && (
@@ -101,11 +88,7 @@ export default function SearchableSubjectInput({
       </div>
 
       {isOpen && (
-        <div
-          className={`absolute z-20 mt-2 w-full overflow-hidden border border-gray-200 bg-white shadow-xl ${
-            isHomepage ? 'rounded-sm' : 'rounded-xl'
-          }`}
-        >
+        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
           <div className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
             Type to narrow subjects or browse by category.
           </div>

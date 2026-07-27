@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { composeEmail, sendEmail } from '@/lib/email'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -58,6 +59,13 @@ export async function POST(request: Request) {
     const packageId = getString(body?.packageId)
     const hoursPerMonth = getPositiveInteger(body?.hoursPerMonth, 8)
     const childrenCount = getPositiveInteger(body?.childrenCount, 1)
+
+    if (lessonFormat === 'online' && !DIASPORA_QURAN_ENABLED) {
+      return NextResponse.json(
+        { error: 'Online lessons are not available yet.' },
+        { status: 400 }
+      )
+    }
 
     if (
       !tutorId ||

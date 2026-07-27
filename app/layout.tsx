@@ -3,9 +3,9 @@ import "./globals.css";
 import AuthProvider from '@/app/components/AuthProvider'
 
 export const metadata: Metadata = {
-  title: "TutorConnect Gambia — Find Tutors In Person or Online",
+  title: "TutorConnect Gambia — Find Tutors Across The Gambia",
   description:
-    "Compare tutors by subject, area, price, availability, and review level. Find in-person tutors across The Gambia and online Quran teachers for Gambians abroad.",
+    "Compare tutors across The Gambia by subject, area, price, availability, and review level.",
   verification: {
     google: "6g7oSE7QXZmdFaiOLNNq4ZVEoh2ez9SLce46rVkLt_k",
   },

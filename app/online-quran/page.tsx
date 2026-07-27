@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
 import Avatar from '@/app/components/Avatar'
 import { formatForeignEstimate } from '@/lib/currency-estimates'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPublicTutorName } from '@/lib/tutor-review'
 import {
@@ -64,6 +66,8 @@ async function loadQuranTutors() {
 }
 
 export default async function OnlineQuranPage() {
+  if (!DIASPORA_QURAN_ENABLED) notFound()
+
   const tutors = await loadQuranTutors()
 
   return (

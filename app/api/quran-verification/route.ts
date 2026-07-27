@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 
@@ -42,6 +43,10 @@ async function getTutorIdForSession() {
 }
 
 export async function GET() {
+  if (!DIASPORA_QURAN_ENABLED) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
+
   try {
     const { tutorId, error } = await getTutorIdForSession()
     if (error) return NextResponse.json({ error }, { status: tutorId ? 400 : 401 })
@@ -64,6 +69,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!DIASPORA_QURAN_ENABLED) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
+
   try {
     const { tutorId, error } = await getTutorIdForSession()
     if (error) return NextResponse.json({ error }, { status: tutorId ? 400 : 401 })

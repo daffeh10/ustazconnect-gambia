@@ -9,6 +9,7 @@ import Avatar from '@/app/components/Avatar'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
 import { trackFunnelEvent } from '@/lib/funnel'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { getTutorSubjectOptions } from '@/lib/tutor-subjects'
 
 interface TutorProfile {
@@ -108,6 +109,7 @@ export default function BookTutorPage() {
 
         setTutor(tutorData)
         const requestedFormat =
+          DIASPORA_QURAN_ENABLED &&
           typeof window !== 'undefined' &&
           new URLSearchParams(window.location.search).get('format') === 'online'
         setLessonFormat(requestedFormat && tutorData.offers_online ? 'online' : 'in_person')
@@ -166,7 +168,12 @@ export default function BookTutorPage() {
       if (typeof draft.familyName === 'string') setFamilyName(draft.familyName)
       if (typeof draft.familyPhone === 'string') setFamilyPhone(draft.familyPhone)
       if (typeof draft.specialRequests === 'string') setSpecialRequests(draft.specialRequests)
-      if (draft.lessonFormat === 'online' || draft.lessonFormat === 'in_person') setLessonFormat(draft.lessonFormat)
+      if (
+        draft.lessonFormat === 'in_person' ||
+        (DIASPORA_QURAN_ENABLED && draft.lessonFormat === 'online')
+      ) {
+        setLessonFormat(draft.lessonFormat)
+      }
       if (draft.bookingType === 'trial' || draft.bookingType === 'monthly') setBookingType(draft.bookingType)
       if (draft.pricingModel === 'package' || draft.pricingModel === 'hourly') setPricingModel(draft.pricingModel)
       if (typeof draft.packageId === 'string') setPackageId(draft.packageId)
@@ -562,7 +569,7 @@ export default function BookTutorPage() {
                   </>
                 )}
 
-                {tutor.offers_online && (
+                {DIASPORA_QURAN_ENABLED && tutor.offers_online && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Lesson format</label>
                     <div className="space-y-3">

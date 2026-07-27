@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { composeEmail, sendEmail } from '@/lib/email'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -26,6 +27,10 @@ function getString(value: unknown) {
 }
 
 export async function GET() {
+  if (!DIASPORA_QURAN_ENABLED) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
+
   try {
     const { admin } = await getAdminContext()
     if (!hasAdminRole(admin, ['owner', 'admin', 'quran_verifier'])) {
@@ -54,6 +59,10 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  if (!DIASPORA_QURAN_ENABLED) {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
+
   try {
     const { admin } = await getAdminContext()
     if (!hasAdminRole(admin, ['owner', 'admin', 'quran_verifier']) || !admin) {

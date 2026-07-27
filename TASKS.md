@@ -141,10 +141,13 @@ acceptance + photo + evidence; labels reflect what was actually reviewed.
 
 ---
 
-## P5 — Diaspora online Quran (future main revenue) `[OPEN]`
+## P5 — Diaspora online Quran (future main revenue) `[LATER]`
 **Why:** highest-margin segment — diaspora pays with foreign cards; Gambian tutor
 cost base. Confirmed feasible: **Waychit accepts international cards, settled in GMD**
 (no separate processor needed).
+**Current decision:** temporarily deferred and hidden behind
+`DIASPORA_QURAN_ENABLED` in `lib/features.ts`. Keep the implementation and data
+intact; Abdul will decide when to re-enable and complete the manual Waychit check.
 **Tasks:**
 - **P5.0 `[MANUAL]`** — confirm with Waychit support that international-card
   acceptance is enabled on the merchant account + get the intl-card fee schedule.

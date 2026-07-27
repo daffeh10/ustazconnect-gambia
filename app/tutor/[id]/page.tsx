@@ -3,6 +3,7 @@ import UstazProfileClient from './UstazProfileClient'
 import { createClient } from '@/lib/supabase/server'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
+import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 
 interface TutorMetadataRow {
   id: string
@@ -72,5 +73,14 @@ export default async function UstazProfilePage({
 }) {
   const { id } = await params
   const query = await searchParams
-  return <UstazProfileClient id={id} defaultLessonFormat={query.lessonFormat === 'online' ? 'online' : 'in_person'} />
+  return (
+    <UstazProfileClient
+      id={id}
+      defaultLessonFormat={
+        DIASPORA_QURAN_ENABLED && query.lessonFormat === 'online'
+          ? 'online'
+          : 'in_person'
+      }
+    />
+  )
 }
