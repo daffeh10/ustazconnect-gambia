@@ -108,7 +108,6 @@ function formatReviews(tutor: TutorWithReviews) {
 
 export default async function Home() {
   const tutors = await loadHomepageTutors()
-  const exampleTutor = tutors[0]
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -116,8 +115,8 @@ export default async function Home() {
 
       <main>
         <section className="border-b border-stone-200">
-          <div className="mx-auto grid max-w-7xl lg:grid-cols-2">
-            <div className="px-4 py-12 sm:py-16 lg:py-20 lg:pr-16">
+          <div className="mx-auto max-w-5xl px-4 py-12 sm:py-16 lg:py-20">
+            <div>
               <p className="flex items-center gap-3 text-xs font-bold uppercase text-emerald-800">
                 <span className="h-1 w-8 bg-amber-400" aria-hidden="true" />
                 TutorConnect Gambia
@@ -126,89 +125,12 @@ export default async function Home() {
                 Good tutoring starts with the right match.
               </h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-stone-600">
-                Find a tutor for Quran, school, exams, or professional courses.
+                Find tutors for Quran Reading with Tajweed, General Mathematics,
+                Physics, English Language, WASSCE, Cambridge IGCSE, and more.
                 Compare by subject, area, price, availability, and review level.
               </p>
               <div className="mt-8">
                 <MarketplaceSearch />
-              </div>
-            </div>
-
-            <div className="hidden bg-emerald-900 px-4 py-10 text-white sm:block sm:px-8 lg:px-12 lg:py-14">
-              <div className="h-full border border-emerald-700 p-5 sm:p-7">
-                <p className="flex items-center gap-3 text-xs font-bold uppercase text-emerald-100">
-                  <span className="h-1 w-8 bg-amber-300" aria-hidden="true" />
-                  One marketplace, two clear routes
-                </p>
-                <h2 className="mt-6 max-w-lg font-serif text-3xl font-medium leading-tight sm:text-4xl">
-                  Learn nearby in The Gambia or online from abroad.
-                </h2>
-
-                <div className="mt-9 grid border-y border-emerald-700 sm:grid-cols-2 sm:divide-x sm:divide-emerald-700">
-                  <div className="py-6 sm:pr-6">
-                    <p className="text-xs font-bold uppercase text-emerald-200">In The Gambia</p>
-                    <h3 className="mt-2 font-serif text-2xl">Subject + area</h3>
-                    <p className="mt-3 text-sm leading-6 text-emerald-100">
-                      School subjects, exams, professional courses, Quran, and languages.
-                    </p>
-                    <div className="mt-5 flex items-center" aria-hidden="true">
-                      <span className="h-2 w-2 rounded-full bg-amber-300" />
-                      <span className="h-px w-10 bg-emerald-400" />
-                      <span className="h-2 w-2 rounded-full bg-amber-300" />
-                      <span className="h-px w-10 bg-emerald-400" />
-                      <span className="h-2 w-2 rounded-full bg-amber-300" />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-emerald-700 py-6 sm:border-t-0 sm:pl-6">
-                    <p className="text-xs font-bold uppercase text-emerald-200">
-                      For Gambians abroad
-                    </p>
-                    <h3 className="mt-2 font-serif text-2xl">Online Quran</h3>
-                    <p className="mt-3 text-sm leading-6 text-emerald-100">
-                      Quran Reading with Tajweed, Hifz (Quran memorisation), Arabic
-                      Language, and Islamic Studies.
-                    </p>
-                    <div className="mt-5 flex items-center" aria-hidden="true">
-                      <span className="h-2 w-2 rounded-full bg-amber-300" />
-                      <span className="h-px w-10 bg-emerald-400" />
-                      <span className="h-2 w-2 rounded-full bg-amber-300" />
-                      <span className="h-px w-10 bg-emerald-400" />
-                      <span className="h-2 w-2 rounded-full bg-amber-300" />
-                    </div>
-                  </div>
-                </div>
-
-                {exampleTutor ? (
-                  <Link
-                    href={`/tutor/${exampleTutor.id}`}
-                    className="mt-8 grid gap-4 bg-stone-50 p-5 text-stone-950 transition-colors hover:bg-white sm:grid-cols-2"
-                  >
-                    <div>
-                      <span className="text-xs font-bold uppercase text-emerald-800">
-                        Current tutor profile
-                      </span>
-                      <strong className="mt-2 block">
-                        {formatPublicTutorName(exampleTutor.name)} -{' '}
-                        {normalizeTutorSubjects(exampleTutor.subjects)[0] ||
-                          'Subjects on profile'}
-                      </strong>
-                    </div>
-                    <div className="border-t border-stone-200 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0 sm:text-right">
-                      <strong className="block">{formatRate(exampleTutor.hourly_rate)}</strong>
-                      <span className="mt-1 block text-xs text-stone-500">
-                        Open the profile to compare details
-                      </span>
-                    </div>
-                  </Link>
-                ) : (
-                  <Link
-                    href="/find-tutor"
-                    className="mt-8 block bg-stone-50 p-5 font-bold text-emerald-900 transition-colors hover:bg-white"
-                  >
-                    Browse the tutor directory
-                  </Link>
-                )}
               </div>
             </div>
           </div>
