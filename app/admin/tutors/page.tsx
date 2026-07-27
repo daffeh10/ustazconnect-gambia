@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { getTutorDocumentTypeLabel } from '@/lib/tutor-review'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 
 interface PendingTutor {
   id: string
@@ -227,7 +228,10 @@ export default function AdminTutorsPage() {
               </div>
 
               <div className="mt-4 text-sm text-gray-700 space-y-2">
-                <p><span className="font-medium">Subjects:</span> {(tutor.subjects || []).join(', ') || 'None listed'}</p>
+                <p>
+                  <span className="font-medium">Subjects:</span>{' '}
+                  {normalizeTutorSubjects(tutor.subjects).join(', ') || 'None listed'}
+                </p>
                 <p><span className="font-medium">Rate:</span> GMD {(tutor.hourly_rate || 0).toLocaleString()}/hour</p>
                 <p><span className="font-medium">Bio:</span> {(tutor.bio || 'No bio provided.').slice(0, 120)}</p>
                 <p><span className="font-medium">Profile photo:</span> {tutor.has_profile_photo ? 'Uploaded' : 'Missing'}</p>

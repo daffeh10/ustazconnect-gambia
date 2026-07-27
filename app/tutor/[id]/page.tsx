@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import UstazProfileClient from './UstazProfileClient'
 import { createClient } from '@/lib/supabase/server'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 
 interface TutorMetadataRow {
   id: string
@@ -42,7 +43,7 @@ export async function generateMetadata({
   }
 
   const location = tutor.location?.trim() || 'The Gambia'
-  const subjects = (tutor.subjects ?? []).slice(0, 3).join(', ')
+  const subjects = normalizeTutorSubjects(tutor.subjects).slice(0, 3).join(', ')
   const subjectText = subjects || 'multiple subjects'
   const hourlyRate =
     typeof tutor.hourly_rate === 'number' && Number.isFinite(tutor.hourly_rate)

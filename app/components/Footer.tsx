@@ -2,46 +2,80 @@ import Link from 'next/link'
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-900 text-gray-400 py-12">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="grid md:grid-cols-4 gap-8">
-          <div>
-            <h3 className="text-white font-bold text-lg mb-4">TutorConnect Gambia</h3>
-            <p className="text-sm">
-              Connecting Gambian families and students with tutors since 2026.
+    <footer className="bg-stone-950 text-stone-300">
+      <div className="mx-auto max-w-7xl px-4 py-12 md:py-16">
+        <div className="grid gap-10 border-b border-stone-800 pb-12 md:grid-cols-2 lg:grid-cols-4">
+          <div className="lg:col-span-2">
+            <Link href="/" className="font-serif text-2xl font-bold text-white">
+              TutorConnect Gambia
+            </Link>
+            <p className="mt-4 max-w-md text-sm leading-6 text-stone-400">
+              Find tutors for in-person lessons across The Gambia and Gambian Quran
+              teachers offering online lessons to families abroad.
             </p>
           </div>
+
           <div>
-            <h4 className="text-white font-semibold mb-4">Quick Links</h4>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/find-tutor" className="hover:text-white transition">Find a Tutor</Link></li>
-              <li><Link href="/online-quran" className="hover:text-white transition">Online Quran</Link></li>
-              <li><Link href="/referrals" className="hover:text-white transition">Referrals</Link></li>
-              <li><Link href="/register/tutor" className="hover:text-white transition">Become a Tutor</Link></li>
-              <li><Link href="/login" className="hover:text-white transition">Sign In</Link></li>
-              <li><Link href="/account/settings" className="hover:text-white transition">Account Settings</Link></li>
+            <h2 className="text-sm font-bold uppercase text-white">Marketplace</h2>
+            <ul className="mt-4 space-y-3 text-sm">
+              <li>
+                <Link href="/find-tutor" className="transition-colors hover:text-white">
+                  Find a tutor
+                </Link>
+              </li>
+              <li>
+                <Link href="/online-quran" className="transition-colors hover:text-white">
+                  Online Quran
+                </Link>
+              </li>
+              <li>
+                <Link href="/register/tutor" className="transition-colors hover:text-white">
+                  Teach with us
+                </Link>
+              </li>
+              <li>
+                <Link href="/referrals" className="transition-colors hover:text-white">
+                  Referrals
+                </Link>
+              </li>
             </ul>
           </div>
+
           <div>
-            <h4 className="text-white font-semibold mb-4">Legal</h4>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/terms" className="hover:text-white transition">Terms of Service</Link></li>
-              <li><Link href="/privacy" className="hover:text-white transition">Privacy Policy</Link></li>
-              <li><Link href="/refund-policy" className="hover:text-white transition">Refund Policy</Link></li>
-              <li><Link href="/tutor-conduct" className="hover:text-white transition">Tutor Conduct</Link></li>
+            <h2 className="text-sm font-bold uppercase text-white">Information</h2>
+            <ul className="mt-4 space-y-3 text-sm">
+              <li>
+                <Link href="/terms" className="transition-colors hover:text-white">
+                  Terms of Service
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="transition-colors hover:text-white">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/refund-policy" className="transition-colors hover:text-white">
+                  Refund Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/tutor-conduct" className="transition-colors hover:text-white">
+                  Tutor Conduct
+                </Link>
+              </li>
             </ul>
-          </div>
-          <div>
-            <h4 className="text-white font-semibold mb-4">Contact</h4>
-            <p className="text-sm">
-              Email: tutorconnectgambia@gmail.com
-              <br />
-              Location: Serrekunda, The Gambia
-            </p>
           </div>
         </div>
-        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
-          © 2026 TutorConnect Gambia. All rights reserved.
+
+        <div className="flex flex-col gap-3 pt-7 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+          <p>&copy; 2026 TutorConnect Gambia. All rights reserved.</p>
+          <a
+            href="mailto:tutorconnectgambia@gmail.com"
+            className="break-all transition-colors hover:text-white"
+          >
+            tutorconnectgambia@gmail.com
+          </a>
         </div>
       </div>
     </footer>

@@ -1,4 +1,5 @@
 import { SUBJECT_CATEGORIES } from '@/lib/constants'
+import { getSubjectSearchAliases } from '@/lib/tutor-subjects'
 
 type SubjectGroup = {
   category: string
@@ -12,14 +13,7 @@ function normalizeSubjectQuery(query: string) {
 function expandSubjectAliases(query: string) {
   const normalizedQuery = normalizeSubjectQuery(query)
 
-  if (
-    normalizedQuery === 'general mathematics' ||
-    normalizedQuery === 'basic mathematics'
-  ) {
-    return ['general mathematics', 'basic mathematics']
-  }
-
-  return [normalizedQuery]
+  return getSubjectSearchAliases(normalizedQuery)
 }
 
 export function filterSubjectGroups(query: string): SubjectGroup[] {
@@ -32,12 +26,16 @@ export function filterSubjectGroups(query: string): SubjectGroup[] {
     }))
   }
 
+  const acceptableQueries = expandSubjectAliases(normalizedQuery)
+
   return SUBJECT_CATEGORIES.map((group) => {
     const categoryMatches = group.category.toLowerCase().includes(normalizedQuery)
     const subjects = categoryMatches
       ? [...group.subjects]
       : group.subjects.filter((subject) =>
-          subject.toLowerCase().includes(normalizedQuery)
+          acceptableQueries.some((candidate) =>
+            subject.toLowerCase().includes(candidate)
+          )
         )
 
     return {

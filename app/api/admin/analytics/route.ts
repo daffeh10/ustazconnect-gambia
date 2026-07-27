@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
 
@@ -152,7 +153,7 @@ export async function GET() {
     const revenue = bucketWeeklyRevenue(payments)
 
     const topSubjects = topCounts(
-      tutors.flatMap((row) => row.subjects ?? []).filter(Boolean),
+      tutors.flatMap((row) => normalizeTutorSubjects(row.subjects)),
       5
     )
     const topLocations = topCounts(

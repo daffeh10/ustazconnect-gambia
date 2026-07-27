@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import LessonCard, { Lesson } from '@/app/components/LessonCard'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 
 interface BookingRow {
   id: string
@@ -424,7 +425,7 @@ export default function FamilyDashboardPage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900">{tutorName}</h3>
                         <p className="text-sm text-gray-600 mt-1">
-                          {(booking.subjects || []).join(', ') || 'No subject selected'} · {booking.hours_per_month} hours/month
+                          {normalizeTutorSubjects(booking.subjects).join(', ') || 'No subject selected'} · {booking.hours_per_month} hours/month
                         </p>
                       </div>
                       <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
@@ -488,7 +489,7 @@ export default function FamilyDashboardPage() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">{tutorNames[booking.tutor_id] || 'Tutor'}</h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        {(booking.subjects || []).join(', ') || 'No subject selected'} · {booking.hours_per_month} hours/month
+                        {normalizeTutorSubjects(booking.subjects).join(', ') || 'No subject selected'} · {booking.hours_per_month} hours/month
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium">

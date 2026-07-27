@@ -1,11 +1,14 @@
+import {
+  HIFZ_QURAN_MEMORISATION,
+  QURAN_READING_WITH_TAJWEED,
+} from '@/lib/tutor-subjects'
+
 export const SUBJECT_CATEGORIES = [
   {
     category: 'Religious Education',
     subjects: [
-      'Quran Reading',
-      'Tajweed',
-      'Hifz (Memorization)',
-      'Arabic Language',
+      QURAN_READING_WITH_TAJWEED,
+      HIFZ_QURAN_MEMORISATION,
       'Islamic Studies',
     ],
   },
@@ -29,7 +32,7 @@ export const SUBJECT_CATEGORIES = [
   },
   {
     category: 'Languages',
-    subjects: ['English Language', 'English Literature', 'French', 'Arabic'],
+    subjects: ['English Language', 'English Literature', 'French', 'Arabic Language'],
   },
   {
     category: 'Humanities',
@@ -60,7 +63,9 @@ export const SUBJECT_CATEGORIES = [
   },
 ] as const
 
-export const ALL_SUBJECTS = SUBJECT_CATEGORIES.flatMap((group) => group.subjects)
+export const ALL_SUBJECTS = Array.from(
+  new Set(SUBJECT_CATEGORIES.flatMap((group) => group.subjects))
+)
 
 export const LOCATION_REGIONS = [
   {

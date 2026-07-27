@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import {
   allocateMonthlyLessonEarning,
   computeLessonEarning,
@@ -455,7 +456,7 @@ export default function DashboardPage() {
           setExperienceYears(profile.experience_years != null ? String(profile.experience_years) : '')
           setHourlyRate(profile.hourly_rate != null ? String(profile.hourly_rate) : '')
           setBio(profile.bio || '')
-          setSubjects(profile.subjects || [])
+          setSubjects(normalizeTutorSubjects(profile.subjects))
           setAvailableDays(Array.isArray(profile.available_days) ? profile.available_days : [])
           setAvailableTimes(Array.isArray(profile.available_times) ? profile.available_times : [])
           setProfilePhotoUrl(profile.profile_photo_url || '')
@@ -499,7 +500,7 @@ export default function DashboardPage() {
           setExperienceYears(
             typeof metadata.experience_years === 'number' ? String(metadata.experience_years) : ''
           )
-          setSubjects(fallbackSubjects)
+          setSubjects(normalizeTutorSubjects(fallbackSubjects))
           setHasTutorConsent(typeof metadata.consent_given_at === 'string')
           setConsentGivenAt(typeof metadata.consent_given_at === 'string' ? metadata.consent_given_at : null)
           setLocation('')
@@ -1162,7 +1163,7 @@ export default function DashboardPage() {
                   <div className="mt-4 space-y-2 text-sm text-gray-700">
                     <p>
                       <span className="font-medium">Subjects:</span>{' '}
-                      {(booking.subjects || []).join(', ') || 'Not provided'}
+                      {normalizeTutorSubjects(booking.subjects).join(', ') || 'Not provided'}
                     </p>
                     <p>
                       <span className="font-medium">Hours per month:</span> {booking.hours_per_month}
@@ -1256,7 +1257,7 @@ export default function DashboardPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{booking.family_name}</h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        {(booking.subjects || []).join(', ') || 'No subject'} · {booking.hours_per_month} hours/month
+                        {normalizeTutorSubjects(booking.subjects).join(', ') || 'No subject'} · {booking.hours_per_month} hours/month
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
@@ -1292,7 +1293,7 @@ export default function DashboardPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{booking.family_name}</h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        {(booking.subjects || []).join(', ') || 'No subject'} · {booking.hours_per_month} hours/month
+                        {normalizeTutorSubjects(booking.subjects).join(', ') || 'No subject'} · {booking.hours_per_month} hours/month
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium">
@@ -1534,7 +1535,7 @@ export default function DashboardPage() {
                 </div>
                 <p className="mt-2 text-sm text-gray-500">
                   Choose the real languages you personally use with students. Arabic is especially useful for Quran,
-                  Tajweed, and Hifz tutors.
+                  Quran Reading with Tajweed, and Hifz (Quran memorisation) tutors.
                 </p>
               </div>
 
@@ -1897,7 +1898,9 @@ export default function DashboardPage() {
                           {booking?.family_name ? `Family: ${booking.family_name}` : `Booking ${bookingId.slice(0, 8)}`}
                         </h3>
                         {booking?.subjects && booking.subjects.length > 0 && (
-                          <p className="text-sm text-gray-600 mt-1">{booking.subjects.join(', ')}</p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {normalizeTutorSubjects(booking.subjects).join(', ')}
+                          </p>
                         )}
                       </div>
                       <div className="space-y-3">

@@ -43,100 +43,128 @@ export default function Header() {
   }
 
   return (
-    <header className="bg-white shadow-sm">
-      <nav className="max-w-6xl mx-auto px-4 py-4">
-        <div className="flex justify-between items-center">
-          {/* Logo */}
-          <Link href="/" className="text-2xl font-bold text-emerald-700">
+    <header className="sticky top-0 z-40 border-b border-stone-200 bg-stone-50">
+      <nav className="mx-auto max-w-7xl px-4">
+        <div className="flex min-h-16 items-center justify-between md:min-h-20">
+          <Link
+            href="/"
+            className="font-serif text-xl font-bold text-stone-950 sm:text-2xl"
+          >
             TutorConnect Gambia
           </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex gap-4 items-center">
-            <Link href="/find-tutor" className="text-gray-600 hover:text-emerald-700 transition">
-              Find a Tutor
+          <div className="hidden items-center gap-5 lg:flex xl:gap-7">
+            <Link
+              href="/find-tutor"
+              className="text-sm font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+            >
+              Find a tutor
             </Link>
-            <Link href="/online-quran" className="text-gray-600 hover:text-emerald-700 transition">
+            <Link
+              href="/online-quran"
+              className="text-sm font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+            >
               Online Quran
+            </Link>
+            <Link
+              href="/#compare-guide"
+              className="text-sm font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+            >
+              How it works
             </Link>
 
             {isLoading ? (
-              <div className="h-10 w-28 rounded-lg bg-gray-100 animate-pulse" />
+              <div className="h-12 w-28 animate-pulse bg-stone-200" />
             ) : isLoggedIn ? (
               <>
-                <Link href={dashboardHref} className="flex items-center gap-3 text-gray-600 hover:text-emerald-700 transition">
+                <Link
+                  href={dashboardHref}
+                  className="flex items-center gap-2 text-sm font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+                >
                   <Avatar name={profileName} photoUrl={profilePhotoUrl} size="sm" />
                   <span>Dashboard</span>
                 </Link>
-                <Link href="/account/settings" className="text-gray-600 hover:text-emerald-700 transition">
+                <Link
+                  href="/account/settings"
+                  className="text-sm font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+                >
                   Account
                 </Link>
                 <button
                   onClick={handleSignOut}
                   disabled={isSigningOut}
-                  className="bg-white text-gray-700 font-medium px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="min-h-12 border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-800 transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSigningOut ? 'Signing out...' : 'Sign Out'}
                 </button>
               </>
             ) : (
               <>
-                <Link href="/login" className="text-gray-600 hover:text-emerald-700 transition">
+                <Link
+                  href="/login"
+                  className="text-sm font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+                >
                   Sign In
                 </Link>
                 <Link
                   href="/register/tutor"
-                  className="bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors"
+                  className="inline-flex min-h-12 items-center bg-stone-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-900"
                 >
-                  Become a Tutor
+                  Teach with us
                 </Link>
               </>
             )}
           </div>
 
-          {/* Mobile menu button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex min-h-12 min-w-12 items-center justify-center text-gray-600 md:hidden"
+            className="flex min-h-12 min-w-12 items-center justify-center text-stone-800 lg:hidden"
             aria-label="Toggle menu"
+            aria-expanded={isMenuOpen}
           >
             {isMenuOpen ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             )}
           </button>
         </div>
 
-        {/* Mobile Navigation */}
         {isMenuOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-gray-100 pt-4 space-y-3">
+          <div className="space-y-2 border-t border-stone-200 pb-5 pt-4 lg:hidden">
             <Link
               href="/find-tutor"
-              className="block text-gray-600 hover:text-emerald-700 transition py-2"
+              className="flex min-h-12 items-center font-semibold text-stone-700 transition-colors hover:text-emerald-800"
               onClick={() => setIsMenuOpen(false)}
             >
-              Find a Tutor
+              Find a tutor
             </Link>
             <Link
               href="/online-quran"
-              className="block text-gray-600 hover:text-emerald-700 transition py-2"
+              className="flex min-h-12 items-center font-semibold text-stone-700 transition-colors hover:text-emerald-800"
               onClick={() => setIsMenuOpen(false)}
             >
               Online Quran
             </Link>
+            <Link
+              href="/#compare-guide"
+              className="flex min-h-12 items-center font-semibold text-stone-700 transition-colors hover:text-emerald-800"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              How it works
+            </Link>
 
             {isLoading ? (
-              <div className="h-10 w-full rounded-lg bg-gray-100 animate-pulse" />
+              <div className="h-12 w-full animate-pulse bg-stone-200" />
             ) : isLoggedIn ? (
               <>
                 <Link
                   href={dashboardHref}
-                  className="flex items-center gap-3 text-gray-600 hover:text-emerald-700 transition py-2"
+                  className="flex min-h-12 items-center gap-3 font-semibold text-stone-700 transition-colors hover:text-emerald-800"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   <Avatar name={profileName} photoUrl={profilePhotoUrl} size="sm" />
@@ -144,7 +172,7 @@ export default function Header() {
                 </Link>
                 <Link
                   href="/account/settings"
-                  className="block text-gray-600 hover:text-emerald-700 transition py-2"
+                  className="flex min-h-12 items-center font-semibold text-stone-700 transition-colors hover:text-emerald-800"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Account Settings
@@ -154,7 +182,7 @@ export default function Header() {
                     void handleSignOut()
                   }}
                   disabled={isSigningOut}
-                  className="block w-full text-left text-gray-600 hover:text-emerald-700 transition py-2 disabled:opacity-60"
+                  className="flex min-h-12 w-full items-center text-left font-semibold text-stone-700 transition-colors hover:text-emerald-800 disabled:opacity-60"
                 >
                   {isSigningOut ? 'Signing out...' : 'Sign Out'}
                 </button>
@@ -163,17 +191,17 @@ export default function Header() {
               <>
                 <Link
                   href="/login"
-                  className="block text-gray-600 hover:text-emerald-700 transition py-2"
+                  className="flex min-h-12 items-center font-semibold text-stone-700 transition-colors hover:text-emerald-800"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/register/tutor"
-                  className="block bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition text-center"
+                  className="flex min-h-12 items-center justify-center bg-stone-950 px-4 py-3 font-bold text-white transition-colors hover:bg-emerald-900"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  Become a Tutor
+                  Teach with us
                 </Link>
               </>
             )}

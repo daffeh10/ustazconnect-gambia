@@ -30,7 +30,7 @@ const BADGE_CONFIG: Record<
     description: 'TutorConnect reviewed a qualification document submitted by this tutor.',
   },
   premium: {
-    text: '⭐ Premium',
+    text: 'Premium',
     classes: 'bg-amber-100 text-amber-700',
     description: 'This is a legacy profile label.',
   },
@@ -42,7 +42,7 @@ export default function VerificationBadge({ status }: VerificationBadgeProps) {
 
   return (
     <span
-      className={`${badge.classes} px-3 py-1 rounded-full text-sm font-medium inline-flex items-center gap-1`}
+      className={`${badge.classes} inline-flex items-center rounded-sm px-2 py-1 text-xs font-semibold`}
       title={badge.description}
       aria-label={`${badge.text}: ${badge.description}`}
     >

@@ -6,6 +6,11 @@ import Avatar from '@/app/components/Avatar'
 import { formatForeignEstimate } from '@/lib/currency-estimates'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPublicTutorName } from '@/lib/tutor-review'
+import {
+  HIFZ_QURAN_MEMORISATION,
+  normalizeTutorSubjects,
+  QURAN_READING_WITH_TAJWEED,
+} from '@/lib/tutor-subjects'
 
 export const metadata: Metadata = {
   title: 'Trusted Gambian Quran Teachers Online | TutorConnect Gambia',
@@ -34,7 +39,18 @@ async function loadQuranTutors() {
       .eq('is_approved', true)
       .eq('is_active', true)
       .eq('offers_online', true)
-      .contains('subjects', ['Quran Reading'])
+      .overlaps('subjects', [
+        QURAN_READING_WITH_TAJWEED,
+        'Quran Reading',
+        'Tajweed',
+        HIFZ_QURAN_MEMORISATION,
+        'Hifz',
+        'Hifz (Memorization)',
+        'Hifz (Memorisation)',
+        'Arabic Language',
+        'Arabic',
+        'Islamic Studies',
+      ])
       .eq('quran_verifications.status', 'approved')
       .order('created_at', { ascending: false })
       .limit(12)
@@ -61,7 +77,9 @@ export default async function OnlineQuranPage() {
               <p className="text-sm font-semibold uppercase text-sky-700">For Gambians abroad</p>
               <h1 className="mt-3 text-3xl font-bold text-gray-900 md:text-5xl">Learn Quran online with verified Gambian teachers</h1>
               <p className="mt-5 text-lg text-gray-600">
-                For families abroad looking for Quran Reading, Tajweed, Hifz, Arabic, or Islamic Studies with teachers who understand Gambian families and can arrange lessons across time zones.
+                For families abroad looking for Quran Reading with Tajweed, Hifz
+                (Quran memorisation), Arabic Language, or Islamic Studies with teachers
+                who understand Gambian families and can arrange lessons across time zones.
               </p>
               <p className="mt-4 border-l-4 border-emerald-500 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
                 Tutors listed here have passed TutorConnect&apos;s dedicated Quran review.
@@ -109,7 +127,9 @@ export default async function OnlineQuranPage() {
                       <p className="text-sm font-medium text-emerald-700">Quran review passed</p>
                     </div>
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">{(tutor.subjects || []).slice(0, 3).join(', ')}</p>
+                  <p className="mt-2 text-sm text-gray-600">
+                    {normalizeTutorSubjects(tutor.subjects).slice(0, 3).join(', ')}
+                  </p>
                   <p className="mt-3 text-sm font-medium text-gray-900">
                     GMD {(tutor.hourly_rate || 0).toLocaleString()}/hour · {formatForeignEstimate(tutor.hourly_rate || 0)}
                   </p>

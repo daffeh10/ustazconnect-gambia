@@ -19,6 +19,10 @@ import StarRating from '@/app/components/StarRating'
 import Avatar from '@/app/components/Avatar'
 import SearchableLocationInput from '@/app/components/SearchableLocationInput'
 import SearchableSubjectInput from '@/app/components/SearchableSubjectInput'
+import {
+  normalizeTutorSubject,
+  normalizeTutorSubjects,
+} from '@/lib/tutor-subjects'
 
 interface UstazProfile {
   id: string
@@ -228,11 +232,13 @@ function FindUstazInner() {
 
     return locationMatch && subjectMatch && rateMatch && onlineMatch
   }).sort((firstTutor, secondTutor) => {
-    const normalizedSubject = subjectFilter.trim().toLowerCase()
+    const normalizedSubject = normalizeTutorSubject(subjectFilter).toLowerCase()
     const normalizedLocation = locationFilter.trim().toLowerCase()
     const exactSubjectScore = (tutor: UstazProfile) =>
       normalizedSubject &&
-      (tutor.subjects || []).some((subject) => subject.toLowerCase() === normalizedSubject)
+      (tutor.subjects || []).some(
+        (subject) => normalizeTutorSubject(subject).toLowerCase() === normalizedSubject
+      )
         ? 1
         : 0
     const exactLocationScore = (tutor: UstazProfile) =>
@@ -466,11 +472,14 @@ function FindUstazInner() {
         {/* ── Tutor cards ── */}
         {!isLoading && !error && filteredUstazs.length > 0 && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredUstazs.map((ustaz) => (
-              <div
-                key={ustaz.id}
-                className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md"
-              >
+            {filteredUstazs.map((ustaz) => {
+              const displaySubjects = normalizeTutorSubjects(ustaz.subjects)
+
+              return (
+                <div
+                  key={ustaz.id}
+                  className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md"
+                >
                 {/* Avatar — show photo or initial */}
                 <div className="flex items-center gap-4 mb-4">
                   <Avatar
@@ -496,7 +505,7 @@ function FindUstazInner() {
 
                 {/* Subjects */}
                 <div className="flex flex-wrap gap-1 mb-4">
-                  {(ustaz.subjects || []).slice(0, 3).map((subject) => (
+                  {displaySubjects.slice(0, 3).map((subject) => (
                     <span
                       key={subject}
                       className="px-2 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-full"
@@ -504,9 +513,9 @@ function FindUstazInner() {
                       {subject}
                     </span>
                   ))}
-                  {(ustaz.subjects || []).length > 3 && (
+                  {displaySubjects.length > 3 && (
                     <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                      +{ustaz.subjects.length - 3} more
+                      +{displaySubjects.length - 3} more
                     </span>
                   )}
                 </div>
@@ -563,8 +572,9 @@ function FindUstazInner() {
                 >
                   View Profile
                 </Link>
-              </div>
-            ))}
+                </div>
+              )
+            })}
           </div>
         )}
       </main>

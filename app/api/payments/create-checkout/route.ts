@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { NextResponse } from 'next/server'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getSiteUrl, getWaychitApiKey, getWaychitApiUrl } from '@/lib/payments'
@@ -223,7 +224,9 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         amount: grandTotal,
-        description: `Booking ${booking.id.slice(0, 8)} for ${(booking.subjects || []).join(', ') || 'tutoring lessons'}`,
+        description: `Booking ${booking.id.slice(0, 8)} for ${
+          normalizeTutorSubjects(booking.subjects).join(', ') || 'tutoring lessons'
+        }`,
         clientReference,
         successRedirectUrl: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
         failureRedirectUrl: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,

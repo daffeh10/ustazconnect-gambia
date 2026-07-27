@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { lessonsForBooking } from '@/lib/pricing'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 
 interface BookingRow {
   id: string
@@ -184,7 +185,9 @@ export default function PaymentPage() {
             </p>
             <p className="flex justify-between gap-4">
               <span>Subjects</span>
-              <span className="font-medium text-right">{(booking.subjects || []).join(', ') || 'Not set'}</span>
+              <span className="font-medium text-right">
+                {normalizeTutorSubjects(booking.subjects).join(', ') || 'Not set'}
+              </span>
             </p>
             <p className="flex justify-between gap-4">
               <span>Sessions count</span>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
 import VerificationBadge from '@/app/components/VerificationBadge'
+import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import StarRating from '@/app/components/StarRating'
 import ReviewCard from '@/app/components/ReviewCard'
 import LeaveReviewForm from '@/app/components/LeaveReviewForm'
@@ -265,7 +266,9 @@ export default function UstazProfileClient({
               </div>
               <div className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-gray-500 text-sm">Subjects</p>
-                <p className="text-xl font-semibold text-gray-900">{ustaz.subjects.length}</p>
+                <p className="text-xl font-semibold text-gray-900">
+                  {normalizeTutorSubjects(ustaz.subjects).length}
+                </p>
               </div>
             </div>
 
@@ -273,7 +276,7 @@ export default function UstazProfileClient({
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">Subjects Taught</h2>
               <div className="flex flex-wrap gap-2">
-                {ustaz.subjects.map((subject) => (
+                {normalizeTutorSubjects(ustaz.subjects).map((subject) => (
                   <span
                     key={subject}
                     className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full"

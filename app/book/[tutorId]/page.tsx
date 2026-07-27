@@ -9,6 +9,7 @@ import Avatar from '@/app/components/Avatar'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
 import { computeBookingCharge, computePackageBookingCharge, computeTrialBookingCharge } from '@/lib/pricing'
 import { trackFunnelEvent } from '@/lib/funnel'
+import { getTutorSubjectOptions } from '@/lib/tutor-subjects'
 
 interface TutorProfile {
   id: string
@@ -379,6 +380,8 @@ export default function BookTutorPage() {
     return null
   }
 
+  const subjectOptions = getTutorSubjectOptions(tutor.subjects)
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-3xl mx-auto">
@@ -456,9 +459,9 @@ export default function BookTutorPage() {
                     required
                   >
                     <option value="">Select a subject</option>
-                    {(tutor.subjects || []).map((subject) => (
-                      <option key={subject} value={subject}>
-                        {subject}
+                    {subjectOptions.map((subject) => (
+                      <option key={subject.value} value={subject.value}>
+                        {subject.label}
                       </option>
                     ))}
                   </select>

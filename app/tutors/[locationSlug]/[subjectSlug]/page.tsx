@@ -5,12 +5,42 @@ import Header from '@/app/components/Header'
 import Footer from '@/app/components/Footer'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import { findBySeoSlug, toSeoSlug } from '@/lib/seo-slugs'
+import {
+  HIFZ_QURAN_MEMORISATION,
+  QURAN_READING_WITH_TAJWEED,
+} from '@/lib/tutor-subjects'
 
 interface SeoTutorPageProps {
   params: Promise<{
     locationSlug: string
     subjectSlug: string
   }>
+}
+
+function findSubjectBySlug(subjectSlug: string) {
+  const currentSubject = findBySeoSlug(ALL_SUBJECTS, subjectSlug)
+  if (currentSubject) return currentSubject
+
+  if (subjectSlug === 'quran-reading' || subjectSlug === 'tajweed') {
+    return QURAN_READING_WITH_TAJWEED
+  }
+
+  if (subjectSlug === 'basic-mathematics') {
+    return 'General Mathematics'
+  }
+
+  if (subjectSlug === 'arabic') {
+    return 'Arabic Language'
+  }
+
+  if (
+    subjectSlug === 'hifz-memorization' ||
+    subjectSlug === 'hifz-memorisation'
+  ) {
+    return HIFZ_QURAN_MEMORISATION
+  }
+
+  return null
 }
 
 export async function generateStaticParams() {
@@ -32,7 +62,7 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: SeoTutorPageProps): Promise<Metadata> {
   const { locationSlug, subjectSlug } = await params
   const location = findBySeoSlug(ALL_LOCATIONS, locationSlug)
-  const subject = findBySeoSlug(ALL_SUBJECTS, subjectSlug)
+  const subject = findSubjectBySlug(subjectSlug)
 
   if (!location || !subject) {
     return {
@@ -49,7 +79,7 @@ export async function generateMetadata({ params }: SeoTutorPageProps): Promise<M
 export default async function SeoTutorPage({ params }: SeoTutorPageProps) {
   const { locationSlug, subjectSlug } = await params
   const location = findBySeoSlug(ALL_LOCATIONS, locationSlug)
-  const subject = findBySeoSlug(ALL_SUBJECTS, subjectSlug)
+  const subject = findSubjectBySlug(subjectSlug)
 
   if (!location || !subject) notFound()
 
