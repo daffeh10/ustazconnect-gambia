@@ -391,13 +391,18 @@ export default function UstazProfileClient({
 
             <section className="mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">Reviews</h2>
-              <div className="flex items-center gap-3">
-                <StarRating rating={averageRating} />
-                <p className="text-sm text-gray-600">({reviewCount} reviews)</p>
-              </div>
-
               {reviewCount > 0 && (
-                <p className="text-sm text-gray-600 mt-2">{recommendationPercent}% would recommend</p>
+                <>
+                  <div className="flex items-center gap-3">
+                    <StarRating rating={averageRating} />
+                    <p className="text-sm text-gray-600">
+                      ({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">
+                    {recommendationPercent}% would recommend
+                  </p>
+                </>
               )}
 
               <div className="mt-4 space-y-4">
@@ -410,9 +415,7 @@ export default function UstazProfileClient({
                   <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                     {reviewsError}
                   </div>
-                ) : reviewCount === 0 ? (
-                  <p className="text-gray-500 text-sm">No reviews yet. Be the first to leave one.</p>
-                ) : (
+                ) : reviewCount > 0 ? (
                   reviews.map((review) => (
                     <ReviewCard
                       key={review.id}
@@ -424,7 +427,7 @@ export default function UstazProfileClient({
                       createdAt={review.created_at}
                     />
                   ))
-                )}
+                ) : null}
               </div>
 
               <div className="mt-6">

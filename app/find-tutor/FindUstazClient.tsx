@@ -540,17 +540,17 @@ function FindUstazInner() {
                         : null
                     const hasReviews =
                       reviewCount !== null ? reviewCount > 0 : ratingValue > 0
+                    if (!hasReviews) return null
+
                     return (
                       <div className="flex items-center gap-2">
                         <StarRating rating={ratingValue} size="sm" />
                         <span className="text-sm text-gray-500">
-                          {hasReviews
-                            ? `${ratingValue.toFixed(1)}${
-                                reviewCount !== null
-                                  ? ` (${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'})`
-                                  : ''
-                              }`
-                            : 'No reviews yet'}
+                          {`${ratingValue.toFixed(1)}${
+                            reviewCount !== null
+                              ? ` (${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'})`
+                              : ''
+                          }`}
                         </span>
                       </div>
                     )

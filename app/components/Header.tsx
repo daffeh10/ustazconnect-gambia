@@ -58,6 +58,12 @@ export default function Header() {
             >
               Find a Tutor
             </Link>
+            <Link
+              href="/how-it-works"
+              className="text-gray-600 transition hover:text-emerald-700"
+            >
+              How It Works
+            </Link>
             {DIASPORA_QURAN_ENABLED && (
               <Link
                 href="/online-quran"
@@ -136,6 +142,13 @@ export default function Header() {
               onClick={() => setIsMenuOpen(false)}
             >
               Find a Tutor
+            </Link>
+            <Link
+              href="/how-it-works"
+              className="block min-h-12 py-2 text-gray-600 transition hover:text-emerald-700"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              How It Works
             </Link>
             {DIASPORA_QURAN_ENABLED && (
               <Link

@@ -84,9 +84,9 @@ function formatRate(rate: number | null) {
   return rate ? `GMD ${rate.toLocaleString()}/hour` : 'See profile for rate'
 }
 
-function formatReviews(tutor: TutorWithReviews) {
+function formatReviews(tutor: TutorWithReviews): string | null {
   if (tutor.reviewCount === 0 || tutor.reviewAverage === null) {
-    return 'No completed-booking reviews yet'
+    return null
   }
 
   return `${tutor.reviewAverage.toFixed(1)} from ${tutor.reviewCount} ${
@@ -98,11 +98,11 @@ export default async function Home() {
   const tutors = await loadHomepageTutors()
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <Header />
 
       <main>
-        <section className="border-b border-gray-200 bg-white">
+        <section className="border-b border-emerald-100 bg-emerald-50">
           <div className="mx-auto max-w-6xl px-4 pb-12 pt-10 text-center md:pb-14 md:pt-14">
             <p className="mb-3 text-sm font-semibold uppercase text-emerald-700">
               TutorConnect Gambia
@@ -146,6 +146,7 @@ export default async function Home() {
               {tutors.map((tutor) => {
                 const publicName = formatPublicTutorName(tutor.name)
                 const displaySubjects = normalizeTutorSubjects(tutor.subjects)
+                const reviewSummary = formatReviews(tutor)
 
                 return (
                   <article
@@ -175,7 +176,9 @@ export default async function Home() {
                       <p className="font-semibold text-gray-950">
                         {formatRate(tutor.hourly_rate)}
                       </p>
-                      <p className="text-gray-500">{formatReviews(tutor)}</p>
+                      {reviewSummary && (
+                        <p className="text-gray-500">{reviewSummary}</p>
+                      )}
                     </div>
                     <Link
                       href={`/tutor/${tutor.id}`}
@@ -199,131 +202,6 @@ export default async function Home() {
           >
             View All Tutors
           </Link>
-        </section>
-
-        <section className="border-y border-gray-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-12 md:py-14">
-            <p className="text-sm font-semibold uppercase text-emerald-700">
-              Across The Gambia
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-gray-950">In-person tutoring</h2>
-            <p className="mt-3 max-w-3xl text-gray-600">
-              Find tutors for Quran, school subjects, exam preparation, languages,
-              and professional courses across The Gambia.
-            </p>
-            <Link
-              href="/find-tutor"
-              className="mt-5 inline-flex min-h-12 items-center font-semibold text-emerald-700 hover:text-emerald-800"
-            >
-              Find an in-person tutor
-            </Link>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-6xl px-4 py-12 md:py-14">
-          <h2 className="text-2xl font-bold text-gray-950">
-            Choose the arrangement that suits your family
-          </h2>
-          <div className="mt-7 grid gap-7 md:grid-cols-3">
-            <div>
-              <h3 className="font-semibold text-gray-950">Intro session</h3>
-              <p className="mt-2 text-gray-600">
-                Meet the tutor for 45 minutes before committing to regular lessons.
-                GMD 150 plus the service fee.
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-950">Regular lessons</h3>
-              <p className="mt-2 text-gray-600">
-                Choose hourly lessons or a flat monthly package based on the tutor&apos;s
-                available options.
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-950">Learning together</h3>
-              <p className="mt-2 text-gray-600">
-                Add children who will learn together and see the full family price
-                before sending the request.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-gray-950 text-white">
-          <div className="mx-auto max-w-6xl px-4 py-12 md:py-14">
-            <h2 className="text-2xl font-bold">How booking works</h2>
-            <ol className="mt-8 grid gap-8 md:grid-cols-4">
-              {[
-                [
-                  '1',
-                  'Search and compare',
-                  'Review subjects, areas, prices, availability, reviews, and review levels.',
-                ],
-                [
-                  '2',
-                  'Send a request',
-                  'Choose an intro session, hourly lessons, or a monthly package.',
-                ],
-                [
-                  '3',
-                  'Tutor responds',
-                  'The tutor reviews your request and normally responds within 48 hours.',
-                ],
-                [
-                  '4',
-                  'Pay and begin',
-                  'After the tutor accepts, pay through Waychit and manage lessons from your dashboard.',
-                ],
-              ].map(([number, title, description]) => (
-                <li key={number}>
-                  <span className="text-sm font-bold text-emerald-400">STEP {number}</span>
-                  <h3 className="mt-2 font-semibold">{title}</h3>
-                  <p className="mt-2 text-sm text-gray-300">{description}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
-        <section className="border-b border-gray-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-12 md:py-14">
-            <h2 className="text-2xl font-bold text-gray-950">
-              Clear information about every tutor
-            </h2>
-            <div className="mt-7 grid gap-7 md:grid-cols-3">
-              <div>
-                <VerificationBadge status="basic" />
-                <p className="mt-3 text-gray-600">
-                  The tutor has created a profile. Qualifications have not been marked
-                  as reviewed.
-                </p>
-              </div>
-              <div>
-                <VerificationBadge status="profile_reviewed" />
-                <p className="mt-3 text-gray-600">
-                  TutorConnect has reviewed study evidence or a teaching reference
-                  submitted by the tutor.
-                </p>
-              </div>
-              <div>
-                <VerificationBadge status="qualification_verified" />
-                <p className="mt-3 text-gray-600">
-                  TutorConnect has reviewed a qualification document submitted by the
-                  tutor.
-                </p>
-              </div>
-            </div>
-            <div className="mt-8 grid gap-5 border-t border-gray-200 pt-7 md:grid-cols-2">
-              <p className="text-gray-700">
-                <strong className="text-gray-950">Reviews:</strong> Families and students
-                can only leave a review after a completed lesson.
-              </p>
-              <p className="text-gray-700">
-                <strong className="text-gray-950">Payment:</strong> Payment is requested
-                only after the tutor accepts the booking.
-              </p>
-            </div>
-          </div>
         </section>
 
         <section className="bg-emerald-700">
