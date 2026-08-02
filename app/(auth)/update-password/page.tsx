@@ -61,10 +61,11 @@ export default function UpdatePasswordPage() {
         const tokenHash = searchParams.get('token_hash')
         const type = normalizeAuthActionType(searchParams.get('type'))
 
-        if (tokenHash && type === 'recovery') {
+        if (tokenHash && (type === 'recovery' || type === 'invite')) {
+          await supabase.auth.signOut()
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
-            type: 'recovery',
+            type,
           })
 
           if (verifyError) throw verifyError

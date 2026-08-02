@@ -23,6 +23,10 @@ export default function AdminManagementPage() {
   const [processingId, setProcessingId] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [warning, setWarning] = useState('')
+  const [emailTest, setEmailTest] = useState<'application' | 'auth' | ''>('')
+  const [emailTestMessage, setEmailTestMessage] = useState('')
+  const [emailTestError, setEmailTestError] = useState('')
 
   async function loadAdmins() {
     setError('')
@@ -48,6 +52,7 @@ export default function AdminManagementPage() {
     setIsSaving(true)
     setError('')
     setMessage('')
+    setWarning('')
 
     try {
       const response = await fetch('/api/admin/admins', {
@@ -55,14 +60,20 @@ export default function AdminManagementPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, userId: userId.trim() || null, role }),
       })
-      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      const payload = (await response.json()) as {
+        ok?: boolean
+        error?: string
+        message?: string
+        warning?: string
+      }
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Could not add admin.')
 
       setName('')
       setEmail('')
       setUserId('')
       setRole('admin')
-      setMessage('Admin added.')
+      setMessage(payload.message || 'Admin added.')
+      setWarning(payload.warning || '')
       await loadAdmins()
     } catch (err) {
       console.error(err)
@@ -76,6 +87,7 @@ export default function AdminManagementPage() {
     setProcessingId(adminId)
     setError('')
     setMessage('')
+    setWarning('')
 
     try {
       const response = await fetch('/api/admin/admins', {
@@ -96,6 +108,41 @@ export default function AdminManagementPage() {
     }
   }
 
+  async function runEmailTest(type: 'application' | 'auth') {
+    setEmailTest(type)
+    setEmailTestMessage('')
+    setEmailTestError('')
+
+    try {
+      const endpoint = type === 'application'
+        ? '/api/admin/test-email'
+        : '/api/admin/test-auth-email'
+      const response = await fetch(endpoint, { method: 'POST' })
+      const payload = (await response.json()) as {
+        ok?: boolean
+        error?: string | null
+        message?: string
+        skipped?: boolean
+      }
+
+      if (!response.ok || !payload.ok) {
+        const fallback = payload.skipped
+          ? 'RESEND_API_KEY is not configured for application emails.'
+          : 'The email test failed.'
+        throw new Error(payload.error || fallback)
+      }
+
+      setEmailTestMessage(
+        payload.message || 'The provider accepted the test. Check the owner inbox and delivery logs.'
+      )
+    } catch (err) {
+      console.error(err)
+      setEmailTestError(err instanceof Error ? err.message : 'The email test failed.')
+    } finally {
+      setEmailTest('')
+    }
+  }
+
   return (
     <div>
       <div className="mb-8">
@@ -104,6 +151,7 @@ export default function AdminManagementPage() {
       </div>
 
       {message && <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700">{message}</div>}
+      {warning && <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">{warning}</div>}
       {error && <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">{error}</div>}
 
       <section className="rounded-xl border border-gray-200 bg-white p-6">
@@ -137,6 +185,41 @@ export default function AdminManagementPage() {
             </button>
           </div>
         </form>
+      </section>
+
+      <section className="mt-8 border-y border-gray-200 py-6">
+        <h2 className="text-lg font-semibold text-gray-900">Email delivery checks</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          Each check sends one real email to the signed-in owner account.
+        </p>
+        {emailTestMessage && (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {emailTestMessage}
+          </div>
+        )}
+        {emailTestError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {emailTestError}
+          </div>
+        )}
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => void runEmailTest('application')}
+            disabled={emailTest !== ''}
+            className="rounded-lg border border-gray-300 bg-white px-5 py-3 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {emailTest === 'application' ? 'Sending...' : 'Test application email'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void runEmailTest('auth')}
+            disabled={emailTest !== ''}
+            className="rounded-lg bg-emerald-600 px-5 py-3 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {emailTest === 'auth' ? 'Sending...' : 'Test password-reset email'}
+          </button>
+        </div>
       </section>
 
       <section className="mt-8 rounded-xl border border-gray-200 bg-white p-6">

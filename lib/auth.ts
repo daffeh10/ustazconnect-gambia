@@ -19,7 +19,14 @@ export function getPublicSiteUrl() {
   const browserUrl =
     typeof window !== 'undefined' ? trimTrailingSlash(window.location.origin) : ''
 
-  if (browserUrl && !isLocalUrl(browserUrl)) {
+  // Production auth emails must always return to the canonical domain. Using
+  // a Vercel preview origin can make Supabase reject the redirect or issue a
+  // link that stops working when that preview is replaced.
+  if (process.env.NODE_ENV === 'production' && envUrl && !isLocalUrl(envUrl)) {
+    return envUrl
+  }
+
+  if (browserUrl) {
     return browserUrl
   }
 
@@ -41,6 +48,40 @@ export function normalizeAuthActionType(value: string | null | undefined) {
 
 export function passwordMeetsRequirements(password: string) {
   return password.length >= 8
+}
+
+export function getFriendlyPasswordResetError(message: string) {
+  const lower = message.toLowerCase()
+
+  if (
+    lower.includes('redirect') &&
+    (lower.includes('not allowed') || lower.includes('invalid') || lower.includes('uri'))
+  ) {
+    return 'This reset request used an invalid website address. Open tutorconnectgambia.com/forgot-password and try again.'
+  }
+
+  if (lower.includes('rate limit') || lower.includes('too many requests')) {
+    return 'Too many reset emails were requested. Wait at least 60 seconds, then request one new link.'
+  }
+
+  if (
+    lower.includes('email address not authorized') ||
+    lower.includes('error sending recovery email') ||
+    lower.includes('smtp') ||
+    lower.includes('email provider')
+  ) {
+    return 'Our email service could not send the reset link. Please contact tutorconnectgambia@gmail.com.'
+  }
+
+  if (lower.includes('invalid email') || lower.includes('unable to validate email address')) {
+    return 'Enter a valid email address and try again.'
+  }
+
+  if (lower.includes('fetch') || lower.includes('network')) {
+    return 'Check your internet connection, then try again.'
+  }
+
+  return 'We could not send a reset link right now. Please try again or contact tutorconnectgambia@gmail.com.'
 }
 
 export function getFriendlyRegistrationError(message: string) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { buildPublicUrl } from '@/lib/auth'
+import { composeEmail, sendEmail } from '@/lib/email'
 import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import { getAdminContext, hasAdminRole, normalizeAdminRole, type AdminRole } from '@/lib/admin'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
@@ -23,6 +24,45 @@ function parseRole(value: string): AdminRole | null {
   if (value === 'owner' || value === 'admin') return value
   if (DIASPORA_QURAN_ENABLED && value === 'quran_verifier') return value
   return null
+}
+
+async function findAuthUserByEmail(
+  supabase: ReturnType<typeof createAdminClient>,
+  email: string
+) {
+  const perPage = 1_000
+
+  for (let page = 1; page <= 100; page += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage })
+    if (error) throw error
+
+    const user = data.users.find(
+      (candidate) => (candidate.email || '').trim().toLowerCase() === email
+    )
+    if (user) return user
+    if (data.users.length < perPage) return null
+  }
+
+  throw new Error('Auth user lookup exceeded the supported page limit.')
+}
+
+function getInviteDeliveryError(message: string) {
+  const lower = message.toLowerCase()
+
+  if (lower.includes('email address not authorized')) {
+    return 'Supabase Auth cannot email this address until custom SMTP is configured.'
+  }
+  if (lower.includes('rate limit') || lower.includes('too many requests')) {
+    return 'The Auth email rate limit was reached. Wait, then send one new invitation.'
+  }
+  if (lower.includes('redirect')) {
+    return 'The invitation redirect is not allowed in Supabase Auth URL Configuration.'
+  }
+  if (lower.includes('sending') || lower.includes('smtp')) {
+    return 'Supabase Auth could not hand the invitation to the configured email provider.'
+  }
+
+  return 'Supabase Auth could not send the invitation. Check the Auth logs for the provider error.'
 }
 
 export async function GET() {
@@ -94,24 +134,39 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
     let userId = suppliedUserId
+    let invitationSent = false
+    let invitedAuthUserCreated = false
 
     if (!userId) {
-      const invite = await supabase.auth.admin.inviteUserByEmail(email, {
-        redirectTo: buildPublicUrl('/admin/login'),
-        data: { role, full_name: name },
-      })
+      const existingUser = await findAuthUserByEmail(supabase, email)
 
-      if (invite.error) {
-        return NextResponse.json(
-          {
-            error:
-              'Could not invite this email. If the user already exists, paste their Supabase user ID and try again.',
-          },
-          { status: 400 }
-        )
+      if (existingUser) {
+        userId = existingUser.id
+      } else {
+        const invite = await supabase.auth.admin.inviteUserByEmail(email, {
+          // Admin invites use the implicit Auth flow, whose session is returned
+          // in a URL fragment. Send it directly to the client page so the
+          // fragment is not lost by a server-side callback.
+          redirectTo: buildPublicUrl('/update-password'),
+          data: { role, full_name: name },
+        })
+
+        if (invite.error) {
+          console.error('Supabase admin invitation failed', {
+            code: invite.error.code,
+            status: invite.error.status,
+            message: invite.error.message,
+          })
+          return NextResponse.json(
+            { error: getInviteDeliveryError(invite.error.message) },
+            { status: 502 }
+          )
+        }
+
+        userId = invite.data.user?.id || ''
+        invitationSent = true
+        invitedAuthUserCreated = Boolean(userId)
       }
-
-      userId = invite.data.user?.id || ''
     }
 
     if (!userId) {
@@ -126,6 +181,23 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'The supplied user ID belongs to a different email address.' },
         { status: 400 }
+      )
+    }
+
+    const { data: existingAdmin, error: existingAdminError } = await supabase
+      .from('admin_users')
+      .select('id,is_active')
+      .eq('user_id', userId)
+      .maybeSingle<{ id: string; is_active: boolean | null }>()
+    if (existingAdminError) throw existingAdminError
+    if (existingAdmin) {
+      return NextResponse.json(
+        {
+          error: existingAdmin.is_active === false
+            ? 'This user already has disabled admin access. Enable the existing admin instead.'
+            : 'This user already has admin access.',
+        },
+        { status: 409 }
       )
     }
 
@@ -154,7 +226,18 @@ export async function POST(request: Request) {
       })
     }
 
-    if (insert.error) throw insert.error
+    if (insert.error) {
+      if (invitedAuthUserCreated) {
+        const cleanup = await supabase.auth.admin.deleteUser(userId)
+        if (cleanup.error) {
+          console.error('Could not remove orphaned invited Auth user', {
+            userId,
+            message: cleanup.error.message,
+          })
+        }
+      }
+      throw insert.error
+    }
 
     await writeAdminAuditLog({
       admin,
@@ -164,7 +247,42 @@ export async function POST(request: Request) {
       metadata: { email, role },
     })
 
-    return NextResponse.json({ ok: true })
+    if (invitationSent) {
+      return NextResponse.json({
+        ok: true,
+        message: 'Admin invited. They must open the newest invitation email and create a password.',
+        delivery: 'invite_sent',
+      })
+    }
+
+    const notification = await sendEmail({
+      to: email,
+      subject: 'TutorConnect Gambia admin access',
+      text: composeEmail([
+        `Hi ${name},`,
+        '',
+        'You now have access to the TutorConnect Gambia admin dashboard.',
+        `Sign in: ${buildPublicUrl('/admin/login')}`,
+        `Forgot your password? ${buildPublicUrl('/forgot-password')}`,
+      ]),
+    })
+
+    if (!notification.sent) {
+      return NextResponse.json({
+        ok: true,
+        message: 'Admin access was added for the existing TutorConnect account.',
+        warning: notification.skipped
+          ? 'The access email was not sent because RESEND_API_KEY is not configured.'
+          : notification.error || 'The access email could not be sent.',
+        delivery: 'access_granted_email_failed',
+      })
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message: 'Admin access was added and a sign-in email was sent to the existing user.',
+      delivery: 'access_granted_email_sent',
+    })
   } catch (error) {
     console.error('admin users create failed', error)
     return NextResponse.json({ error: 'Could not add admin.' }, { status: 500 })

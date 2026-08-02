@@ -1,26 +1,18 @@
 import Link from 'next/link'
-
-function getSafeConfirmationUrl(value: string | string[] | undefined) {
-  if (!value || Array.isArray(value)) return null
-
-  try {
-    const decoded = decodeURIComponent(value)
-    const url = new URL(decoded)
-
-    if (!url.protocol.startsWith('http')) {
-      return null
-    }
-
-    return decoded
-  } catch {
-    return null
-  }
-}
+import {
+  buildAuthEmailActionPath,
+  getSafeAuthEmailToken,
+  getSafeSupabaseConfirmationUrl,
+} from '@/lib/auth-email'
 
 export default function ResetPasswordEmailLandingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ confirmation_url?: string }>
+  searchParams: Promise<{
+    confirmation_url?: string
+    token_hash?: string
+    type?: string
+  }>
 }) {
   return <ResetPasswordEmailLanding searchParams={searchParams} />
 }
@@ -28,10 +20,18 @@ export default function ResetPasswordEmailLandingPage({
 async function ResetPasswordEmailLanding({
   searchParams,
 }: {
-  searchParams: Promise<{ confirmation_url?: string }>
+  searchParams: Promise<{
+    confirmation_url?: string
+    token_hash?: string
+    type?: string
+  }>
 }) {
   const params = await searchParams
-  const confirmationUrl = getSafeConfirmationUrl(params.confirmation_url)
+  const tokenHash = getSafeAuthEmailToken(params.token_hash, params.type, 'recovery')
+  const confirmationUrl = getSafeSupabaseConfirmationUrl(params.confirmation_url)
+  const actionUrl = tokenHash
+    ? buildAuthEmailActionPath(tokenHash, 'recovery')
+    : confirmationUrl
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
@@ -51,9 +51,9 @@ async function ResetPasswordEmailLanding({
           For security, this email uses a two-step reset link. This helps prevent email scanners from accidentally consuming your one-time reset link before you use it.
         </div>
 
-        {confirmationUrl ? (
+        {actionUrl ? (
           <a
-            href={confirmationUrl}
+            href={actionUrl}
             className="block w-full rounded-lg bg-emerald-600 px-6 py-3 text-center font-medium text-white transition-colors hover:bg-emerald-700"
           >
             Continue to reset password

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { FormEvent, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { buildPublicUrl } from '@/lib/auth'
+import { buildPublicUrl, getFriendlyPasswordResetError } from '@/lib/auth'
 
 export default function ForgotPasswordPage() {
   const supabase = createClient()
@@ -33,8 +33,9 @@ export default function ForgotPasswordPage() {
 
       setIsSuccess(true)
     } catch (err) {
-      console.error(err)
-      setError('We could not send a reset link right now. Please try again.')
+      const message = err instanceof Error ? err.message : ''
+      console.error('Password reset request failed', { message })
+      setError(getFriendlyPasswordResetError(message))
     } finally {
       setIsLoading(false)
     }

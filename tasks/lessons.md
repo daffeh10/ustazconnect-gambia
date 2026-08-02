@@ -20,3 +20,6 @@ Format: `- YYYY-MM-DD — <the rule>. (why: <what went wrong>)`
 - 2026-07-26 — Verify security patch versions against the official release and
   run lint after dependency overrides. (why: an assumed patch and incompatible
   transitive override were corrected before shipping.)
+- 2026-08-02 — Treat Supabase Auth email as a separate delivery channel from
+  application Resend email; production Auth needs custom SMTP and canonical
+  callback URLs. (why: app emails worked while resets and invitations failed.)
