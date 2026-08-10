@@ -7,6 +7,7 @@ import VerificationBadge from './components/VerificationBadge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPublicTutorName } from '@/lib/tutor-review'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
+import { formatTutorGenderLabel } from '@/lib/tutor-profile'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,7 @@ interface HomepageTutor {
   hourly_rate: number | null
   profile_photo_url: string | null
   verification_status: string | null
+  gender?: string | null
 }
 
 interface TutorReview {
@@ -30,16 +32,31 @@ interface TutorWithReviews extends HomepageTutor {
   reviewAverage: number | null
 }
 
+const LEGACY_HOMEPAGE_TUTOR_SELECT =
+  'id,name,location,subjects,hourly_rate,profile_photo_url,verification_status'
+const ENHANCED_HOMEPAGE_TUTOR_SELECT = `${LEGACY_HOMEPAGE_TUTOR_SELECT},gender`
+
 async function loadHomepageTutors(): Promise<TutorWithReviews[]> {
   try {
     const supabase = createAdminClient()
-    const { data: tutorRows, error: tutorError } = await supabase
+    const primaryResult = await supabase
       .from('public_tutors')
-      .select(
-        'id,name,location,subjects,hourly_rate,profile_photo_url,verification_status'
-      )
+      .select(ENHANCED_HOMEPAGE_TUTOR_SELECT)
       .order('created_at', { ascending: false })
       .limit(4)
+    let tutorRows = (primaryResult.data ?? null) as HomepageTutor[] | null
+    let tutorError = primaryResult.error
+
+    if (tutorError) {
+      const fallbackResult = await supabase
+        .from('public_tutors')
+        .select(LEGACY_HOMEPAGE_TUTOR_SELECT)
+        .order('created_at', { ascending: false })
+        .limit(4)
+
+      tutorRows = (fallbackResult.data ?? null) as HomepageTutor[] | null
+      tutorError = fallbackResult.error
+    }
 
     if (tutorError) throw tutorError
 
@@ -147,6 +164,7 @@ export default async function Home() {
                 const publicName = formatPublicTutorName(tutor.name)
                 const displaySubjects = normalizeTutorSubjects(tutor.subjects)
                 const reviewSummary = formatReviews(tutor)
+                const genderLabel = formatTutorGenderLabel(tutor.gender)
 
                 return (
                   <article
@@ -164,6 +182,9 @@ export default async function Home() {
                         <p className="truncate text-sm text-gray-500">
                           {tutor.location || 'Location being updated'}
                         </p>
+                        {genderLabel && (
+                          <p className="text-sm font-medium text-gray-600">{genderLabel}</p>
+                        )}
                       </div>
                     </div>
                     <div className="mt-4">

@@ -20,6 +20,20 @@ export const GENDER_OPTIONS = [
   'Female',
 ] as const
 
+export type TutorGender = (typeof GENDER_OPTIONS)[number]
+
+export function normalizeTutorGender(value: string | null | undefined): TutorGender | null {
+  const normalized = value?.trim().toLowerCase()
+  if (normalized === 'male') return 'Male'
+  if (normalized === 'female') return 'Female'
+  return null
+}
+
+export function formatTutorGenderLabel(value: string | null | undefined) {
+  const gender = normalizeTutorGender(value)
+  return gender ? `${gender} tutor` : null
+}
+
 export const EDUCATION_OPTIONS = [
   'Secondary',
   'Diploma',

@@ -1390,6 +1390,9 @@ export default function DashboardPage() {
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-sm text-gray-500">
+                  Your gender is shown on your public tutor profile to help families choose a suitable tutor.
+                </p>
               </div>
 
               <div>

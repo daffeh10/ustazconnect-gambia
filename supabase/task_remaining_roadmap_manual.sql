@@ -416,7 +416,12 @@ select
   education,
   verification_status,
   average_rating,
-  created_at
+  created_at,
+  case lower(trim(gender))
+    when 'male' then 'Male'
+    when 'female' then 'Female'
+    else null
+  end as gender
 from public.tutor_profiles
 where is_active = true
   and is_approved = true

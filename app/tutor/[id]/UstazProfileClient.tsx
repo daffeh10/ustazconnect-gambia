@@ -16,6 +16,7 @@ import Avatar from '@/app/components/Avatar'
 import { formatPublicTutorName, isTutorPubliclyVisible } from '@/lib/tutor-review'
 import { trackFunnelEvent } from '@/lib/funnel'
 import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
+import { formatTutorGenderLabel } from '@/lib/tutor-profile'
 
 interface UstazProfile {
   id: string
@@ -36,6 +37,7 @@ interface UstazProfile {
   verification_status?: string | null
   average_rating?: number | string | null
   created_at: string
+  gender?: string | null
 }
 
 interface ReviewRow {
@@ -53,6 +55,8 @@ const LEGACY_PUBLIC_TUTOR_PROFILE_SELECT =
   'id,name,location,subjects,experience_years,hourly_rate,bio,available_days,available_times,profile_photo_url,verification_status,average_rating,created_at'
 const ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT =
   `${LEGACY_PUBLIC_TUTOR_PROFILE_SELECT},offers_online,languages,areas_covered,age_groups,education`
+const GENDER_PUBLIC_TUTOR_PROFILE_SELECT =
+  `${ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT},gender`
 
 export default function UstazProfileClient({
   id,
@@ -97,7 +101,7 @@ export default function UstazProfileClient({
       try {
         const primaryResult = await supabase
           .from('public_tutors')
-          .select(ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT)
+          .select(GENDER_PUBLIC_TUTOR_PROFILE_SELECT)
           .eq('id', id)
           .single()
         let data = (primaryResult.data ?? null) as UstazProfile | null
@@ -106,12 +110,23 @@ export default function UstazProfileClient({
         if (error) {
           const fallbackResult = await supabase
             .from('public_tutors')
-            .select(LEGACY_PUBLIC_TUTOR_PROFILE_SELECT)
+            .select(ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT)
             .eq('id', id)
             .single()
 
           data = (fallbackResult.data ?? null) as UstazProfile | null
           error = fallbackResult.error
+        }
+
+        if (error) {
+          const legacyResult = await supabase
+            .from('public_tutors')
+            .select(LEGACY_PUBLIC_TUTOR_PROFILE_SELECT)
+            .eq('id', id)
+            .single()
+
+          data = (legacyResult.data ?? null) as UstazProfile | null
+          error = legacyResult.error
         }
 
         if (error) throw error
@@ -207,21 +222,25 @@ export default function UstazProfileClient({
   const recommendationPercent =
     reviewCount > 0 ? Math.round((recommendationCount / reviewCount) * 100) : 0
   const publicTutorName = formatPublicTutorName(ustaz.name)
+  const genderLabel = formatTutorGenderLabel(ustaz.gender)
+  const profileMeta = [ustaz.location, genderLabel].filter(
+    (value): value is string => Boolean(value)
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="flex min-h-screen min-w-0 flex-col bg-gray-50">
       <Header />
 
-      <main className="max-w-4xl mx-auto px-4 py-8 flex-1 w-full">
+      <main className="mx-auto w-full min-w-0 max-w-4xl flex-1 px-4 py-8">
         {/* Back link */}
         <Link href="/find-tutor" className="text-emerald-600 hover:text-emerald-700 mb-6 inline-block">
           ← Back to all tutors
         </Link>
 
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="min-w-0 overflow-hidden rounded-xl bg-white shadow-sm">
           {/* Profile Header Banner */}
-          <div className="bg-emerald-600 px-6 py-8">
-            <div className="flex items-center gap-6">
+          <div className="bg-emerald-600 px-4 py-8 sm:px-6">
+            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6">
               {/* Avatar — show uploaded photo or fall back to initial */}
               <Avatar
                 name={publicTutorName}
@@ -229,8 +248,8 @@ export default function UstazProfileClient({
                 size="lg"
                 className="bg-white text-emerald-600"
               />
-              <div className="text-white">
-                <h1 className="text-3xl font-bold">{publicTutorName}</h1>
+              <div className="min-w-0 text-white">
+                <h1 className="break-words text-2xl font-bold sm:text-3xl">{publicTutorName}</h1>
                 <div className="mt-2">
                   <VerificationBadge status={ustaz.verification_status} />
                 </div>
@@ -241,19 +260,19 @@ export default function UstazProfileClient({
                     </span>
                   </div>
                 )}
-                <p className="text-emerald-100 flex items-center gap-2 mt-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <p className="mt-1 flex min-w-0 items-start gap-2 text-emerald-100">
+                  <svg className="mt-1 h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  {ustaz.location}
+                  <span className="min-w-0 break-words">{profileMeta.join(' · ')}</span>
                 </p>
               </div>
             </div>
           </div>
 
           {/* Profile Content */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {/* Quick Info */}
             <div className="grid md:grid-cols-3 gap-4 mb-8">
               <div className="bg-gray-50 rounded-lg p-4 text-center">

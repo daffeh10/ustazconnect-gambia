@@ -24,6 +24,11 @@ import {
   normalizeTutorSubject,
   normalizeTutorSubjects,
 } from '@/lib/tutor-subjects'
+import {
+  formatTutorGenderLabel,
+  normalizeTutorGender,
+  type TutorGender,
+} from '@/lib/tutor-profile'
 
 interface UstazProfile {
   id: string
@@ -41,6 +46,7 @@ interface UstazProfile {
   average_rating?: number | string | null
   review_count?: number | null
   created_at: string
+  gender?: string | null
 }
 
 const RECENT_VIEWED_KEY = 'rv_tutors'
@@ -49,6 +55,7 @@ const LEGACY_PUBLIC_TUTOR_SELECT =
   'id,name,location,subjects,experience_years,hourly_rate,bio,available_days,profile_photo_url,offers_online,verification_status,average_rating,created_at'
 const ENHANCED_PUBLIC_TUTOR_SELECT =
   `${LEGACY_PUBLIC_TUTOR_SELECT},languages`
+const GENDER_PUBLIC_TUTOR_SELECT = `${ENHANCED_PUBLIC_TUTOR_SELECT},gender`
 
 // ─── Inner component (reads URL search params) ────────────────────────────────
 function FindUstazInner() {
@@ -58,6 +65,7 @@ function FindUstazInner() {
   // we use that as the starting value. Otherwise start empty = show all.
   const initialLocation = searchParams.get('location') || ''
   const initialSubject = searchParams.get('subject') || ''
+  const initialGender = normalizeTutorGender(searchParams.get('gender')) || ''
   const initialOnlineOnly =
     DIASPORA_QURAN_ENABLED && searchParams.get('online') === '1'
   const parsedInitialMaxRate = Number(searchParams.get('maxRate'))
@@ -74,6 +82,7 @@ function FindUstazInner() {
 
   const [locationFilter, setLocationFilter] = useState(initialLocation)
   const [subjectFilter, setSubjectFilter] = useState(initialSubject)
+  const [genderFilter, setGenderFilter] = useState<TutorGender | ''>(initialGender)
   const [maxRate, setMaxRate] = useState(initialMaxRate)
   const [onlineOnly, setOnlineOnly] = useState(initialOnlineOnly)
   const [recentTutors, setRecentTutors] = useState<UstazProfile[]>([])
@@ -84,7 +93,7 @@ function FindUstazInner() {
       try {
         const primaryResult = await supabase
           .from('public_tutors')
-          .select(ENHANCED_PUBLIC_TUTOR_SELECT)
+          .select(GENDER_PUBLIC_TUTOR_SELECT)
           .order('created_at', { ascending: false })
         let data = (primaryResult.data ?? null) as UstazProfile[] | null
         let error = primaryResult.error
@@ -92,11 +101,21 @@ function FindUstazInner() {
         if (error) {
           const fallbackResult = await supabase
             .from('public_tutors')
-            .select(LEGACY_PUBLIC_TUTOR_SELECT)
+            .select(ENHANCED_PUBLIC_TUTOR_SELECT)
             .order('created_at', { ascending: false })
 
           data = (fallbackResult.data ?? null) as UstazProfile[] | null
           error = fallbackResult.error
+        }
+
+        if (error) {
+          const legacyResult = await supabase
+            .from('public_tutors')
+            .select(LEGACY_PUBLIC_TUTOR_SELECT)
+            .order('created_at', { ascending: false })
+
+          data = (legacyResult.data ?? null) as UstazProfile[] | null
+          error = legacyResult.error
         }
 
         if (error) throw error
@@ -164,12 +183,13 @@ function FindUstazInner() {
     const params = new URLSearchParams()
     if (locationFilter.trim()) params.set('location', locationFilter.trim())
     if (subjectFilter.trim()) params.set('subject', subjectFilter.trim())
+    if (genderFilter) params.set('gender', genderFilter)
     if (maxRate < 500) params.set('maxRate', String(maxRate))
     if (onlineOnly) params.set('online', '1')
 
     const query = params.toString()
     window.history.replaceState({}, '', query ? `/find-tutor?${query}` : '/find-tutor')
-  }, [locationFilter, maxRate, onlineOnly, subjectFilter])
+  }, [genderFilter, locationFilter, maxRate, onlineOnly, subjectFilter])
 
   useEffect(() => {
     async function loadRecentTutors() {
@@ -184,7 +204,7 @@ function FindUstazInner() {
       try {
         const primaryResult = await supabase
           .from('public_tutors')
-          .select(ENHANCED_PUBLIC_TUTOR_SELECT)
+          .select(GENDER_PUBLIC_TUTOR_SELECT)
           .in('id', storedIds)
         let data = (primaryResult.data ?? null) as UstazProfile[] | null
         let error = primaryResult.error
@@ -192,11 +212,21 @@ function FindUstazInner() {
         if (error) {
           const fallbackResult = await supabase
             .from('public_tutors')
-            .select(LEGACY_PUBLIC_TUTOR_SELECT)
+            .select(ENHANCED_PUBLIC_TUTOR_SELECT)
             .in('id', storedIds)
 
           data = (fallbackResult.data ?? null) as UstazProfile[] | null
           error = fallbackResult.error
+        }
+
+        if (error) {
+          const legacyResult = await supabase
+            .from('public_tutors')
+            .select(LEGACY_PUBLIC_TUTOR_SELECT)
+            .in('id', storedIds)
+
+          data = (legacyResult.data ?? null) as UstazProfile[] | null
+          error = legacyResult.error
         }
 
         if (error) throw error
@@ -231,8 +261,10 @@ function FindUstazInner() {
 
     const rateMatch = maxRate >= 500 || (tutor.hourly_rate || 0) <= maxRate
     const onlineMatch = !onlineOnly || Boolean(tutor.offers_online)
+    const genderMatch =
+      !genderFilter || normalizeTutorGender(tutor.gender) === genderFilter
 
-    return locationMatch && subjectMatch && rateMatch && onlineMatch
+    return locationMatch && subjectMatch && rateMatch && onlineMatch && genderMatch
   }).sort((firstTutor, secondTutor) => {
     const normalizedSubject = normalizeTutorSubject(subjectFilter).toLowerCase()
     const normalizedLocation = locationFilter.trim().toLowerCase()
@@ -269,6 +301,7 @@ function FindUstazInner() {
     'Hello TutorConnect, I need help finding a tutor.',
     subjectFilter.trim() ? `Subject: ${subjectFilter.trim()}.` : '',
     locationFilter.trim() ? `Area: ${locationFilter.trim()}.` : '',
+    genderFilter ? `Tutor gender: ${genderFilter}.` : '',
   ].filter(Boolean).join(' ')
   const supportWhatsappLink = buildWhatsappLink(
     process.env.NEXT_PUBLIC_TUTORCONNECT_WHATSAPP,
@@ -286,10 +319,10 @@ function FindUstazInner() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="flex min-h-screen min-w-0 flex-col bg-gray-50">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
+      <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Find a Tutor</h1>
         <p className="text-gray-600 mb-8">
           Compare tutors by subject, area, price, availability, lesson format, and review level.
@@ -298,36 +331,45 @@ function FindUstazInner() {
         {recentTutors.length > 0 && (
           <section className="mb-8">
             <h2 className="text-sm font-medium text-gray-600 mb-3">Recently viewed</h2>
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {recentTutors.map((tutor) => (
-                <div
-                  key={tutor.id}
-                  className="w-48 shrink-0 bg-white border border-gray-200 rounded-xl p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar
-                      name={formatPublicTutorName(tutor.name)}
-                      photoUrl={tutor.profile_photo_url}
-                      size="sm"
-                    />
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">
-                        {formatPublicTutorName(tutor.name)}
-                      </p>
-                      <p className="text-sm text-gray-500 truncate">{tutor.location}</p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-3">
-                    GMD {tutor.hourly_rate?.toLocaleString() || '0'}/hour
-                  </p>
-                  <Link
-                    href={`/tutor/${tutor.id}`}
-                    className="mt-3 inline-flex min-h-12 items-center text-sm font-medium text-emerald-600 hover:text-emerald-700"
+            <div className="flex max-w-full gap-3 overflow-x-auto overscroll-x-contain pb-2">
+              {recentTutors.map((tutor) => {
+                const genderLabel = formatTutorGenderLabel(tutor.gender)
+
+                return (
+                  <div
+                    key={tutor.id}
+                    className="w-48 shrink-0 bg-white border border-gray-200 rounded-xl p-3"
                   >
-                    View profile
-                  </Link>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        name={formatPublicTutorName(tutor.name)}
+                        photoUrl={tutor.profile_photo_url}
+                        size="sm"
+                      />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">
+                          {formatPublicTutorName(tutor.name)}
+                        </p>
+                        <p className="truncate text-sm text-gray-500">{tutor.location}</p>
+                        {genderLabel && (
+                          <p className="truncate text-sm font-medium text-gray-600">
+                            {genderLabel}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-3">
+                      GMD {tutor.hourly_rate?.toLocaleString() || '0'}/hour
+                    </p>
+                    <Link
+                      href={`/tutor/${tutor.id}`}
+                      className="mt-3 inline-flex min-h-12 items-center text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                    >
+                      View profile
+                    </Link>
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}
@@ -337,8 +379,8 @@ function FindUstazInner() {
           <div
             className={
               DIASPORA_QURAN_ENABLED
-                ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-4'
-                : 'grid gap-4 md:grid-cols-2 lg:grid-cols-3'
+                ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-5'
+                : 'grid gap-4 md:grid-cols-2 lg:grid-cols-4'
             }
           >
 
@@ -358,8 +400,26 @@ function FindUstazInner() {
                 label="Subject"
                 value={subjectFilter}
                 onChange={setSubjectFilter}
-                placeholder="Search by subject or exam"
+                placeholder="Subject or exam"
               />
+            </div>
+
+            <div>
+              <label htmlFor="gender-filter" className="mb-1 block text-sm font-medium text-gray-700">
+                Tutor gender
+              </label>
+              <select
+                id="gender-filter"
+                value={genderFilter}
+                onChange={(event) =>
+                  setGenderFilter(normalizeTutorGender(event.target.value) || '')
+                }
+                className="min-h-12 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Any gender</option>
+                <option value="Female">Female tutors</option>
+                <option value="Male">Male tutors</option>
+              </select>
             </div>
 
             <div>
@@ -396,12 +456,13 @@ function FindUstazInner() {
           </div>
 
           {/* Clear button — only appears when a filter is active */}
-          {(locationFilter || subjectFilter || maxRate < 500 || onlineOnly) && (
+          {(locationFilter || subjectFilter || genderFilter || maxRate < 500 || onlineOnly) && (
             <div className="mt-3 flex justify-end">
               <button
                 onClick={() => {
                   setLocationFilter('')
                   setSubjectFilter('')
+                  setGenderFilter('')
                   setMaxRate(500)
                   setOnlineOnly(false)
                 }}
@@ -436,6 +497,7 @@ function FindUstazInner() {
             {filteredUstazs.length === 1 ? 'tutor' : 'tutors'}
             {locationFilter && ` matching "${locationFilter.trim()}"`}
             {subjectFilter && ` for "${subjectFilter.trim()}"`}
+            {genderFilter && ` · ${genderFilter} tutors`}
             {onlineOnly && ' with online lessons available'}
           </p>
         )}
@@ -451,6 +513,7 @@ function FindUstazInner() {
                 onClick={() => {
                   setLocationFilter('')
                   setSubjectFilter('')
+                  setGenderFilter('')
                   setMaxRate(500)
                   setOnlineOnly(false)
                 }}
@@ -484,24 +547,28 @@ function FindUstazInner() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredUstazs.map((ustaz) => {
               const displaySubjects = normalizeTutorSubjects(ustaz.subjects)
+              const genderLabel = formatTutorGenderLabel(ustaz.gender)
+              const tutorMeta = [ustaz.location, genderLabel].filter(
+                (value): value is string => Boolean(value)
+              )
 
               return (
                 <div
                   key={ustaz.id}
-                  className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md"
+                  className="min-w-0 rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-6"
                 >
                 {/* Avatar — show photo or initial */}
-                <div className="flex items-center gap-4 mb-4">
+                <div className="mb-4 flex min-w-0 items-start gap-4">
                   <Avatar
                     name={formatPublicTutorName(ustaz.name)}
                     photoUrl={ustaz.profile_photo_url}
                     size="md"
                   />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="break-words font-semibold text-gray-900">
                       {formatPublicTutorName(ustaz.name)}
                     </h3>
-                    <p className="text-sm text-gray-500">{ustaz.location}</p>
+                    <p className="break-words text-sm text-gray-500">{tutorMeta.join(' · ')}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <VerificationBadge status={ustaz.verification_status} />
                       {DIASPORA_QURAN_ENABLED && ustaz.offers_online && (
@@ -518,7 +585,7 @@ function FindUstazInner() {
                   {displaySubjects.slice(0, 3).map((subject) => (
                     <span
                       key={subject}
-                      className="px-2 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-full"
+                      className="max-w-full break-words rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700"
                     >
                       {subject}
                     </span>
