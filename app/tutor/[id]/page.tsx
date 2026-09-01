@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { cache } from 'react'
+import { notFound } from 'next/navigation'
 import UstazProfileClient from './UstazProfileClient'
 import { createClient } from '@/lib/supabase/server'
 import { isTutorPubliclyVisible } from '@/lib/tutor-review'
@@ -17,28 +19,52 @@ interface TutorMetadataRow {
   is_test_account: boolean | null
 }
 
+interface TutorLookup {
+  tutor: TutorMetadataRow | null
+  // Distinguishes "this tutor is hidden" from "the lookup itself failed", so a
+  // transient database error never 404s a real tutor's profile.
+  lookupFailed: boolean
+}
+
+// cache() dedupes this across generateMetadata and the page render, which Next
+// runs as two passes over the same request.
+const loadPublicTutor = cache(async (id: string): Promise<TutorLookup> => {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('public_tutors')
+      .select('id,name,location,subjects,hourly_rate,bio,verification_status,created_at,is_test_account')
+      .eq('id', id)
+      .maybeSingle<TutorMetadataRow>()
+
+    if (error) throw error
+    return { tutor: data, lookupFailed: false }
+  } catch (error) {
+    console.error('tutor profile lookup failed', error)
+    return { tutor: null, lookupFailed: true }
+  }
+})
+
+function isVisible(tutor: TutorMetadataRow | null) {
+  return Boolean(
+    tutor &&
+      isTutorPubliclyVisible({
+        isTestAccount: tutor.is_test_account,
+        verificationStatus: tutor.verification_status,
+        createdAt: tutor.created_at,
+      })
+  )
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
-  const supabase = await createClient()
+  const { tutor } = await loadPublicTutor(id)
 
-  const { data: tutor } = await supabase
-    .from('public_tutors')
-    .select('id,name,location,subjects,hourly_rate,bio,verification_status,created_at,is_test_account')
-    .eq('id', id)
-    .maybeSingle<TutorMetadataRow>()
-
-  if (
-    !tutor ||
-    !isTutorPubliclyVisible({
-      isTestAccount: tutor.is_test_account,
-      verificationStatus: tutor.verification_status,
-      createdAt: tutor.created_at,
-    })
-  ) {
+  if (!tutor || !isVisible(tutor)) {
     return {
       title: 'Tutor Profile | TutorConnect Gambia',
       description: 'Browse tutor profiles across The Gambia on TutorConnect Gambia.',
@@ -75,6 +101,14 @@ export default async function UstazProfilePage({
 }) {
   const { id } = await params
   const query = await searchParams
+  const { tutor, lookupFailed } = await loadPublicTutor(id)
+
+  // Fail open on a lookup error: the client component repeats this check, so a
+  // blip shows its error state rather than a hard 404 on a real profile.
+  if (!lookupFailed && !isVisible(tutor)) {
+    notFound()
+  }
+
   return (
     <UstazProfileClient
       id={id}
