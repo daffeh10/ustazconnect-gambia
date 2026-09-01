@@ -23,3 +23,8 @@ Format: `- YYYY-MM-DD — <the rule>. (why: <what went wrong>)`
 - 2026-08-02 — Treat Supabase Auth email as a separate delivery channel from
   application Resend email; production Auth needs custom SMTP and canonical
   callback URLs. (why: app emails worked while resets and invitations failed.)
+- 2026-09-01 — Public tutor visibility is enforced in Postgres by the
+  `public_tutors` view (is_active + is_approved + the 90-day Basic grace), not by
+  React. `isTutorPubliclyVisible` in the components is a redundant second check —
+  do not describe it as the security boundary. (why: reported the browser filter
+  as a gap when the view already covered it.)

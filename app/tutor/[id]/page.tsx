@@ -14,6 +14,7 @@ interface TutorMetadataRow {
   bio: string | null
   verification_status: string | null
   created_at: string | null
+  is_test_account: boolean | null
 }
 
 export async function generateMetadata({
@@ -26,13 +27,14 @@ export async function generateMetadata({
 
   const { data: tutor } = await supabase
     .from('public_tutors')
-    .select('id,name,location,subjects,hourly_rate,bio,verification_status,created_at')
+    .select('id,name,location,subjects,hourly_rate,bio,verification_status,created_at,is_test_account')
     .eq('id', id)
     .maybeSingle<TutorMetadataRow>()
 
   if (
     !tutor ||
     !isTutorPubliclyVisible({
+      isTestAccount: tutor.is_test_account,
       verificationStatus: tutor.verification_status,
       createdAt: tutor.created_at,
     })

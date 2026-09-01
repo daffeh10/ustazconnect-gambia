@@ -15,6 +15,7 @@ interface PendingTutor {
   hourly_rate: number | null
   bio: string | null
   is_approved: boolean | null
+  is_test_account: boolean | null
   applied_days_ago: number
   has_profile_photo: boolean
   review_path: 'qualification_verified' | 'profile_reviewed' | null
@@ -222,8 +223,17 @@ export default function AdminTutorsPage() {
                     Applied {tutor.applied_days_ago} day{tutor.applied_days_ago === 1 ? '' : 's'} ago
                   </p>
                   <p className="mt-1 text-sm font-medium text-gray-700">
-                    {tutor.is_approved ? 'Live as Basic' : 'Pending approval'}
+                    {tutor.is_test_account
+                      ? 'Hidden test account'
+                      : tutor.is_approved
+                        ? 'Live as Basic'
+                        : 'Pending approval'}
                   </p>
+                  {tutor.is_test_account && (
+                    <span className="mt-1 inline-block rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+                      Internal testing only
+                    </span>
+                  )}
                 </div>
               </div>
 

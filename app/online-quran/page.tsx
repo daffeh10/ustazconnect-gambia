@@ -40,6 +40,7 @@ async function loadQuranTutors() {
       .select('id,name,subjects,hourly_rate,bio,profile_photo_url,verification_status,quran_verifications!inner(status)')
       .eq('is_approved', true)
       .eq('is_active', true)
+      .eq('is_test_account', false)
       .eq('offers_online', true)
       .overlaps('subjects', [
         QURAN_READING_WITH_TAJWEED,

@@ -75,6 +75,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .from('tutor_profiles')
       .select('id,verification_status,created_at')
       .eq('is_approved', true)
+      .eq('is_test_account', false)
 
     const tutorRoutes: MetadataRoute.Sitemap = (tutors ?? [])
       .filter((tutor) =>

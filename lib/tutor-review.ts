@@ -1,3 +1,5 @@
+import { BASIC_TUTOR_GRACE_ENABLED } from '@/lib/features'
+
 export const TUTOR_REVIEW_CONTACT_EMAIL = 'tutorconnectgambia@gmail.com'
 export const BASIC_TUTOR_GRACE_PERIOD_DAYS = 90
 
@@ -68,19 +70,25 @@ export function getBasicTutorGraceInfo(createdAt?: string | null, now = new Date
 
 export function isTutorPubliclyVisible({
   isApproved = true,
+  isTestAccount = false,
   verificationStatus,
   createdAt,
   now,
 }: {
   isApproved?: boolean | null
+  isTestAccount?: boolean | null
   verificationStatus?: string | null
   createdAt?: string | null
   now?: Date
 }) {
   if (!isApproved) return false
 
+  // Internal QA profiles stay bookable by direct link but never surface publicly.
+  if (isTestAccount) return false
+
   const normalizedStatus = normalizeTutorVerificationStatus(verificationStatus)
   if (normalizedStatus !== 'basic') return true
+  if (!BASIC_TUTOR_GRACE_ENABLED) return true
 
   return !getBasicTutorGraceInfo(createdAt, now).isExpired
 }

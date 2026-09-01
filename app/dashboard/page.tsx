@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
-import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
+import { BASIC_TUTOR_GRACE_ENABLED, DIASPORA_QURAN_ENABLED } from '@/lib/features'
 import {
   allocateMonthlyLessonEarning,
   computeLessonEarning,
@@ -999,7 +999,7 @@ export default function DashboardPage() {
                 {isApproved && isProfilePubliclyVisible
                   ? 'Your profile is live, but it still shows the Basic label.'
                   : isApproved
-                    ? 'Your Basic profile is no longer public right now.'
+                    ? 'Your Basic profile is live, but it still shows the Basic label.'
                   : 'Complete the items below so we can review and list your profile.'}
               </p>
               <p className="mt-1 text-sky-800">
@@ -1009,10 +1009,16 @@ export default function DashboardPage() {
               </p>
               {isApproved && (
                 <p className="mt-2 text-sky-800">
-                  Basic profiles can stay public for up to {BASIC_TUTOR_GRACE_PERIOD_DAYS} days while you complete verification.
-                  {isProfilePubliclyVisible
-                    ? ` You currently have ${basicTutorGraceInfo.daysRemaining} day${basicTutorGraceInfo.daysRemaining === 1 ? '' : 's'} left before your public listing is paused.`
-                    : ' Your public listing is paused until you upload the missing items below and complete review.'}
+                  {BASIC_TUTOR_GRACE_ENABLED ? (
+                    <>
+                      Basic profiles can stay public for up to {BASIC_TUTOR_GRACE_PERIOD_DAYS} days while you complete verification.
+                      {isProfilePubliclyVisible
+                        ? ` You currently have ${basicTutorGraceInfo.daysRemaining} day${basicTutorGraceInfo.daysRemaining === 1 ? '' : 's'} left before your public listing is paused.`
+                        : ' Your public listing is paused until you upload the missing items below and complete review.'}
+                    </>
+                  ) : (
+                    'Your Basic profile stays public while you complete verification. A verified badge helps families choose you over an unverified tutor.'
+                  )}
                 </p>
               )}
               <ul className="mt-3 space-y-2">

@@ -7,12 +7,18 @@ import VerificationBadge from './components/VerificationBadge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPublicTutorName } from '@/lib/tutor-review'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
+import {
+  compareHomepageTutors,
+  HOMEPAGE_TUTOR_COUNT,
+  HOMEPAGE_TUTOR_POOL_SIZE,
+} from '@/lib/tutor-ranking'
 import { formatTutorGenderLabel } from '@/lib/tutor-profile'
 
 export const dynamic = 'force-dynamic'
 
 interface HomepageTutor {
   id: string
+  created_at: string | null
   name: string
   location: string | null
   subjects: string[] | null
@@ -33,26 +39,39 @@ interface TutorWithReviews extends HomepageTutor {
 }
 
 const LEGACY_HOMEPAGE_TUTOR_SELECT =
-  'id,name,location,subjects,hourly_rate,profile_photo_url,verification_status'
+  'id,name,location,subjects,hourly_rate,profile_photo_url,verification_status,created_at'
 const ENHANCED_HOMEPAGE_TUTOR_SELECT = `${LEGACY_HOMEPAGE_TUTOR_SELECT},gender`
+const PUBLIC_HOMEPAGE_TUTOR_SELECT = `${ENHANCED_HOMEPAGE_TUTOR_SELECT},is_test_account`
 
 async function loadHomepageTutors(): Promise<TutorWithReviews[]> {
   try {
     const supabase = createAdminClient()
     const primaryResult = await supabase
       .from('public_tutors')
-      .select(ENHANCED_HOMEPAGE_TUTOR_SELECT)
+      .select(PUBLIC_HOMEPAGE_TUTOR_SELECT)
+      .eq('is_test_account', false)
       .order('created_at', { ascending: false })
-      .limit(4)
+      .limit(HOMEPAGE_TUTOR_POOL_SIZE)
     let tutorRows = (primaryResult.data ?? null) as HomepageTutor[] | null
     let tutorError = primaryResult.error
+
+    if (tutorError) {
+      const enhancedResult = await supabase
+        .from('public_tutors')
+        .select(ENHANCED_HOMEPAGE_TUTOR_SELECT)
+        .order('created_at', { ascending: false })
+        .limit(HOMEPAGE_TUTOR_POOL_SIZE)
+
+      tutorRows = (enhancedResult.data ?? null) as HomepageTutor[] | null
+      tutorError = enhancedResult.error
+    }
 
     if (tutorError) {
       const fallbackResult = await supabase
         .from('public_tutors')
         .select(LEGACY_HOMEPAGE_TUTOR_SELECT)
         .order('created_at', { ascending: false })
-        .limit(4)
+        .limit(HOMEPAGE_TUTOR_POOL_SIZE)
 
       tutorRows = (fallbackResult.data ?? null) as HomepageTutor[] | null
       tutorError = fallbackResult.error
@@ -77,7 +96,7 @@ async function loadHomepageTutors(): Promise<TutorWithReviews[]> {
 
     const reviews = (reviewRows ?? []) as TutorReview[]
 
-    return tutors.map((tutor) => {
+    const scoredTutors = tutors.map((tutor) => {
       const tutorReviews = reviews.filter((review) => review.tutor_id === tutor.id)
       const reviewAverage =
         tutorReviews.length > 0
@@ -91,6 +110,8 @@ async function loadHomepageTutors(): Promise<TutorWithReviews[]> {
         reviewAverage,
       }
     })
+
+    return scoredTutors.sort(compareHomepageTutors).slice(0, HOMEPAGE_TUTOR_COUNT)
   } catch (error) {
     console.error('Homepage tutors failed to load', error)
     return []

@@ -47,6 +47,7 @@ interface UstazProfile {
   review_count?: number | null
   created_at: string
   gender?: string | null
+  is_test_account?: boolean | null
 }
 
 const RECENT_VIEWED_KEY = 'rv_tutors'
@@ -56,6 +57,7 @@ const LEGACY_PUBLIC_TUTOR_SELECT =
 const ENHANCED_PUBLIC_TUTOR_SELECT =
   `${LEGACY_PUBLIC_TUTOR_SELECT},languages`
 const GENDER_PUBLIC_TUTOR_SELECT = `${ENHANCED_PUBLIC_TUTOR_SELECT},gender`
+const PUBLIC_TUTOR_SELECT = `${GENDER_PUBLIC_TUTOR_SELECT},is_test_account`
 
 // ─── Inner component (reads URL search params) ────────────────────────────────
 function FindUstazInner() {
@@ -93,10 +95,21 @@ function FindUstazInner() {
       try {
         const primaryResult = await supabase
           .from('public_tutors')
-          .select(GENDER_PUBLIC_TUTOR_SELECT)
+          .select(PUBLIC_TUTOR_SELECT)
+          .eq('is_test_account', false)
           .order('created_at', { ascending: false })
         let data = (primaryResult.data ?? null) as UstazProfile[] | null
         let error = primaryResult.error
+
+        if (error) {
+          const genderResult = await supabase
+            .from('public_tutors')
+            .select(GENDER_PUBLIC_TUTOR_SELECT)
+            .order('created_at', { ascending: false })
+
+          data = (genderResult.data ?? null) as UstazProfile[] | null
+          error = genderResult.error
+        }
 
         if (error) {
           const fallbackResult = await supabase
@@ -122,6 +135,7 @@ function FindUstazInner() {
 
         const tutors = ((data || []) as UstazProfile[]).filter((tutor) =>
           isTutorPubliclyVisible({
+            isTestAccount: tutor.is_test_account,
             verificationStatus: tutor.verification_status,
             createdAt: tutor.created_at,
           })
@@ -204,7 +218,8 @@ function FindUstazInner() {
       try {
         const primaryResult = await supabase
           .from('public_tutors')
-          .select(GENDER_PUBLIC_TUTOR_SELECT)
+          .select(PUBLIC_TUTOR_SELECT)
+          .eq('is_test_account', false)
           .in('id', storedIds)
         let data = (primaryResult.data ?? null) as UstazProfile[] | null
         let error = primaryResult.error
@@ -233,6 +248,7 @@ function FindUstazInner() {
 
         const tutors = ((data || []) as UstazProfile[]).filter((tutor) =>
           isTutorPubliclyVisible({
+            isTestAccount: tutor.is_test_account,
             verificationStatus: tutor.verification_status,
             createdAt: tutor.created_at,
           })

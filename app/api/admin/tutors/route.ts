@@ -21,6 +21,7 @@ interface TutorRow {
   profile_photo_url: string | null
   is_approved: boolean | null
   verification_status: string | null
+  is_test_account: boolean | null
   created_at: string
 }
 
@@ -77,7 +78,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('tutor_profiles')
       .select(
-        'id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,created_at'
+        'id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,is_test_account,created_at'
       )
       .order('created_at', { ascending: true })
 
@@ -164,7 +165,7 @@ export async function PATCH(request: Request) {
     if (action === 'approve') {
       const tutorResult = await supabase
         .from('tutor_profiles')
-        .select('id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,created_at')
+        .select('id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,is_test_account,created_at')
         .eq('id', tutorId)
         .single()
       const tutor = tutorResult.data as TutorRow | null

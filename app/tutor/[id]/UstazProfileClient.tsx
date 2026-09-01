@@ -35,6 +35,7 @@ interface UstazProfile {
   age_groups?: string[] | null
   education?: string | null
   verification_status?: string | null
+  is_test_account?: boolean | null
   average_rating?: number | string | null
   created_at: string
   gender?: string | null
@@ -57,6 +58,8 @@ const ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT =
   `${LEGACY_PUBLIC_TUTOR_PROFILE_SELECT},offers_online,languages,areas_covered,age_groups,education`
 const GENDER_PUBLIC_TUTOR_PROFILE_SELECT =
   `${ENHANCED_PUBLIC_TUTOR_PROFILE_SELECT},gender`
+const PUBLIC_TUTOR_PROFILE_SELECT =
+  `${GENDER_PUBLIC_TUTOR_PROFILE_SELECT},is_test_account`
 
 export default function UstazProfileClient({
   id,
@@ -101,11 +104,22 @@ export default function UstazProfileClient({
       try {
         const primaryResult = await supabase
           .from('public_tutors')
-          .select(GENDER_PUBLIC_TUTOR_PROFILE_SELECT)
+          .select(PUBLIC_TUTOR_PROFILE_SELECT)
           .eq('id', id)
           .single()
         let data = (primaryResult.data ?? null) as UstazProfile | null
         let error = primaryResult.error
+
+        if (error) {
+          const genderResult = await supabase
+            .from('public_tutors')
+            .select(GENDER_PUBLIC_TUTOR_PROFILE_SELECT)
+            .eq('id', id)
+            .single()
+
+          data = (genderResult.data ?? null) as UstazProfile | null
+          error = genderResult.error
+        }
 
         if (error) {
           const fallbackResult = await supabase
@@ -133,6 +147,7 @@ export default function UstazProfileClient({
         if (
           !data ||
           !isTutorPubliclyVisible({
+            isTestAccount: data.is_test_account,
             verificationStatus: data.verification_status,
             createdAt: data.created_at,
           })
