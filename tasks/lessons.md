@@ -28,3 +28,8 @@ Format: `- YYYY-MM-DD — <the rule>. (why: <what went wrong>)`
   React. `isTutorPubliclyVisible` in the components is a redundant second check —
   do not describe it as the security boundary. (why: reported the browser filter
   as a gap when the view already covered it.)
+- 2026-09-01 — The Supabase SQL editor connects as `postgres`, not `service_role`,
+  so `auth.role()` is not 'service_role' there. Any trust-column trigger gated on
+  that check silently reverts manual UPDATEs from the editor while still
+  reporting success. Disable the trigger around the write, then re-enable it.
+  (why: STEP 4 of a migration appeared to run twice and changed nothing.)

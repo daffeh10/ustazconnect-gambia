@@ -110,18 +110,29 @@ grant select on public.public_tutors to anon, authenticated;
 -- =============================================================================
 -- STEP 4 — mark the two internal test tutors
 -- =============================================================================
--- CHECK FIRST. Confirm this returns exactly these two rows and nothing else.
+-- IMPORTANT — run this whole block in one go, after STEP 2.
+-- The Supabase SQL editor connects as `postgres`, NOT as `service_role`, so
+-- auth.role() is not 'service_role' here and the STEP 2 trigger treats the
+-- editor like an untrusted client: it silently reverts is_test_account and the
+-- UPDATE still reports success. Disable the trigger around the write.
 
-select id, name, email, is_approved, verification_status, is_test_account
-from public.tutor_profiles
+alter table public.tutor_profiles
+  disable trigger trg_enforce_tutor_trust_columns;
+
+update public.tutor_profiles
+set is_test_account = true, updated_at = now()
 where id in (
   '69b3e576-cde7-473a-b7b2-f872a30539ff',  -- Abdou Daffeh
   'eff52053-31a4-4621-9e16-4fea84902042'   -- Ali Jammeh
 );
 
--- Then flag them.
-update public.tutor_profiles
-set is_test_account = true, updated_at = now()
+alter table public.tutor_profiles
+  enable trigger trg_enforce_tutor_trust_columns;
+
+-- Must return two rows, both true. If either says false, the trigger was still
+-- armed and the update was reverted -- re-run the block above.
+select id, name, is_test_account
+from public.tutor_profiles
 where id in (
   '69b3e576-cde7-473a-b7b2-f872a30539ff',
   'eff52053-31a4-4621-9e16-4fea84902042'
