@@ -43,6 +43,7 @@ export default function RegisterTutorPage() {
   const [languages, setLanguages] = useState<string[]>([])
   const [ageGroups, setAgeGroups] = useState<string[]>([])
   const [education, setEducation] = useState('')
+  const [bio, setBio] = useState('')
   const [experienceYears, setExperienceYears] = useState('')
   const [offersOnline, setOffersOnline] = useState(false)
   const [hasTutorConsent, setHasTutorConsent] = useState(false)
@@ -231,6 +232,7 @@ export default function RegisterTutorPage() {
           subjects: selectedSubjects,
           experience_years: parsedExperienceYears,
           hourly_rate: parsedHourlyRate,
+          bio: bio.trim() || null,
           is_active: true,
           is_approved: false,
         }
@@ -667,6 +669,24 @@ export default function RegisterTutorPage() {
                 </div>
               </div>
 
+              <div>
+                <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+                  About You
+                </label>
+                <textarea
+                  id="bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  placeholder="Tell families about your teaching style and experience."
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  Optional, and you can add it later. This is the first thing a family
+                  reads on your profile, so a few honest sentences help them choose you.
+                </p>
+              </div>
+
               {DIASPORA_QURAN_ENABLED && (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <label className="flex items-start justify-between gap-4">
@@ -736,6 +756,7 @@ export default function RegisterTutorPage() {
                       <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Hourly rate</dt><dd className="text-right font-medium text-gray-900">GMD {Number(hourlyRate || 0).toLocaleString()}</dd></div>
                       <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Teaching areas</dt><dd className="max-w-xs text-right font-medium text-gray-900">{areasCovered.join(', ') || location}</dd></div>
                       <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">Languages</dt><dd className="max-w-xs text-right font-medium text-gray-900">{languages.join(', ')}</dd></div>
+                      <div className="flex justify-between gap-4 py-3"><dt className="text-gray-500">About you</dt><dd className="max-w-xs text-right font-medium text-gray-900">{bio.trim() || 'Not added yet'}</dd></div>
                       {DIASPORA_QURAN_ENABLED && (
                         <div className="flex justify-between gap-4 py-3">
                           <dt className="text-gray-500">Online lessons</dt>
