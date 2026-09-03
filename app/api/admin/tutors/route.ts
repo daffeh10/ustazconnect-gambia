@@ -4,7 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
 import {
+  TUTOR_REVIEW_CONTACT_EMAIL,
   getTutorDocumentTypeLabel,
+  hasReviewDocumentOnFile,
   normalizeTutorVerificationStatus,
   getTutorReviewPathFromApprovedDocumentTypes,
 } from '@/lib/tutor-review'
@@ -54,7 +56,7 @@ function getLatestDocumentStatusByType(documents: TutorDocumentRow[]) {
   return latestStatusByType
 }
 
-function isCoreProfileReadyForBasicApproval(tutor: TutorRow) {
+function hasCoreProfileDetails(tutor: TutorRow) {
   return Boolean(
     tutor.name?.trim() &&
     tutor.email?.trim() &&
@@ -65,6 +67,38 @@ function isCoreProfileReadyForBasicApproval(tutor: TutorRow) {
     typeof tutor.hourly_rate === 'number' &&
     tutor.hourly_rate > 0
   )
+}
+
+/**
+ * The gate for listing a tutor publicly. This is the promise the tutor
+ * dashboard makes to them ("upload a clear profile photo and at least one
+ * review document"), so it has to be enforced here or the copy is a lie.
+ */
+function isReadyForBasicApproval(tutor: TutorRow, documents: TutorDocumentRow[]) {
+  return (
+    hasCoreProfileDetails(tutor) &&
+    Boolean(tutor.profile_photo_url) &&
+    hasReviewDocumentOnFile(documents)
+  )
+}
+
+function describeApprovalBlockers(tutor: TutorRow, documents: TutorDocumentRow[]) {
+  const missing: string[] = []
+
+  if (!tutor.phone?.trim()) missing.push('phone number')
+  if (!tutor.location?.trim()) missing.push('location')
+  if (!Array.isArray(tutor.subjects) || tutor.subjects.length === 0) {
+    missing.push('at least one subject')
+  }
+  if (typeof tutor.hourly_rate !== 'number' || tutor.hourly_rate <= 0) {
+    missing.push('a valid hourly rate')
+  }
+  if (!tutor.profile_photo_url) missing.push('a profile photo')
+  if (!hasReviewDocumentOnFile(documents)) {
+    missing.push('at least one review document that has not been rejected')
+  }
+
+  return missing
 }
 
 export async function GET() {
@@ -110,21 +144,22 @@ export async function GET() {
     }
 
     const enrichedTutors = tutors.map((tutor) => {
-      const latestStatusByType = getLatestDocumentStatusByType(
-        documentsByTutorId.get(tutor.id) ?? []
-      )
+      const tutorDocuments = documentsByTutorId.get(tutor.id) ?? []
+      const latestStatusByType = getLatestDocumentStatusByType(tutorDocuments)
       const approvedDocumentTypes = Array.from(latestStatusByType.entries())
         .filter(([, status]) => status === 'approved')
         .map(([documentType]) => documentType)
       const reviewPath = getTutorReviewPathFromApprovedDocumentTypes(approvedDocumentTypes)
       const canEarnVerifiedStatus = Boolean(tutor.profile_photo_url) && Boolean(reviewPath)
       const approvalOutcome = canEarnVerifiedStatus ? reviewPath : 'basic'
-      const canApprove = isCoreProfileReadyForBasicApproval(tutor)
+      const canApprove = isReadyForBasicApproval(tutor, tutorDocuments)
 
       return {
         ...tutor,
         applied_days_ago: daysSince(tutor.created_at),
         has_profile_photo: Boolean(tutor.profile_photo_url),
+        has_review_document: hasReviewDocumentOnFile(tutorDocuments),
+        approval_blockers: describeApprovalBlockers(tutor, tutorDocuments),
         review_path: reviewPath,
         approval_outcome: approvalOutcome,
         can_approve: canApprove,
@@ -156,11 +191,78 @@ export async function PATCH(request: Request) {
     const tutorId = typeof body?.tutorId === 'string' ? body.tutorId.trim() : ''
     const action = typeof body?.action === 'string' ? body.action.trim().toLowerCase() : ''
 
-    if (!tutorId || !['approve', 'reject'].includes(action)) {
+    if (!tutorId || !['approve', 'reject', 'request_changes'].includes(action)) {
       return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
     }
 
+    const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
+
+    // A tutor cannot act on "no" without being told why, so the reason is required.
+    if (action === 'reject' && !reason) {
+      return NextResponse.json(
+        { error: 'Please give a brief reason. It is sent to the tutor so they know what to fix.' },
+        { status: 400 }
+      )
+    }
+
     const supabase = createAdminClient()
+
+    // Tell a tutor exactly what is still missing, without rejecting them.
+    if (action === 'request_changes') {
+      const [tutorResult, documentsResult] = await Promise.all([
+        supabase
+          .from('tutor_profiles')
+          .select('id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,is_test_account,created_at')
+          .eq('id', tutorId)
+          .maybeSingle(),
+        supabase
+          .from('tutor_documents')
+          .select('tutor_id,document_type,status,uploaded_at')
+          .eq('tutor_id', tutorId),
+      ])
+
+      if (tutorResult.error) throw tutorResult.error
+      if (documentsResult.error) throw documentsResult.error
+
+      const tutor = tutorResult.data as TutorRow | null
+      if (!tutor) return NextResponse.json({ error: 'Tutor not found.' }, { status: 404 })
+
+      const blockers = describeApprovalBlockers(tutor, (documentsResult.data ?? []) as TutorDocumentRow[])
+
+      if (!tutor.email) {
+        return NextResponse.json(
+          { error: 'This tutor has no email address on file, so they cannot be notified.' },
+          { status: 400 }
+        )
+      }
+
+      const result = await sendEmail({
+        to: tutor.email,
+        subject: 'Your TutorConnect profile needs a few more details',
+        text: composeEmail([
+          `Hi ${tutor.name || 'Tutor'},`,
+          '',
+          'Thank you for applying to TutorConnect Gambia. We cannot list your profile publicly yet.',
+          ...(blockers.length > 0
+            ? ['', 'Still needed:', ...blockers.map((blocker) => `- ${blocker}`)]
+            : []),
+          ...(reason ? ['', reason] : []),
+          '',
+          'Sign in to your dashboard to update these, and we will review your profile again.',
+          `Questions: ${TUTOR_REVIEW_CONTACT_EMAIL}`,
+        ]),
+      })
+
+      await writeAdminAuditLog({
+        admin,
+        action: 'tutor.changes_requested',
+        targetType: 'tutor_profile',
+        targetId: tutorId,
+        metadata: { blockers, note: reason, email_sent: result.sent },
+      })
+
+      return NextResponse.json({ ok: true, blockers, email_sent: result.sent })
+    }
 
     if (action === 'approve') {
       const tutorResult = await supabase
@@ -180,16 +282,6 @@ export async function PATCH(request: Request) {
         )
       }
 
-      if (!isCoreProfileReadyForBasicApproval(tutor)) {
-        return NextResponse.json(
-          {
-            error:
-              'This tutor still needs the core public profile details before approval: phone, location, at least one subject, and a valid hourly rate.',
-          },
-          { status: 400 }
-        )
-      }
-
       const { data: documents, error: documentsError } = await supabase
         .from('tutor_documents')
         .select('tutor_id,document_type,status,uploaded_at')
@@ -198,9 +290,21 @@ export async function PATCH(request: Request) {
 
       if (documentsError) throw documentsError
 
-      const latestStatusByType = getLatestDocumentStatusByType(
-        (documents ?? []) as TutorDocumentRow[]
-      )
+      const tutorDocuments = (documents ?? []) as TutorDocumentRow[]
+
+      if (!isReadyForBasicApproval(tutor, tutorDocuments)) {
+        return NextResponse.json(
+          {
+            error: `This tutor cannot be listed publicly yet. Still missing: ${describeApprovalBlockers(
+              tutor,
+              tutorDocuments
+            ).join(', ')}.`,
+          },
+          { status: 400 }
+        )
+      }
+
+      const latestStatusByType = getLatestDocumentStatusByType(tutorDocuments)
       const approvedDocumentTypes = Array.from(latestStatusByType.entries())
         .filter(([, status]) => status === 'approved')
         .map(([documentType]) => documentType)
@@ -262,7 +366,7 @@ export async function PATCH(request: Request) {
       action: 'tutor.rejected',
       targetType: 'tutor_profile',
       targetId: tutorId,
-      metadata: { reason: typeof body?.reason === 'string' ? body.reason.trim() : '' },
+      metadata: { reason },
     })
 
     const { data: rejectedTutor } = await supabase
@@ -272,17 +376,18 @@ export async function PATCH(request: Request) {
       .maybeSingle<{ name: string | null; email: string | null }>()
 
     if (rejectedTutor?.email) {
-      const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
       await sendEmail({
         to: rejectedTutor.email,
         subject: 'TutorConnect profile review update',
         text: composeEmail([
           `Hi ${rejectedTutor.name || 'Tutor'},`,
           '',
-          reason
-            ? `Your tutor profile needs more work before approval. Reason: ${reason}`
-            : 'Your tutor profile needs more work before approval.',
-          'You can update your dashboard and contact TutorConnect if you need help.',
+          'We are not able to approve your tutor profile at this time.',
+          '',
+          `Reason: ${reason}`,
+          '',
+          'You can update your profile from your dashboard and reply to this email if you would like us to look again.',
+          `Questions: ${TUTOR_REVIEW_CONTACT_EMAIL}`,
         ]),
       })
     }

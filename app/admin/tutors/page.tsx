@@ -18,6 +18,8 @@ interface PendingTutor {
   is_test_account: boolean | null
   applied_days_ago: number
   has_profile_photo: boolean
+  has_review_document: boolean
+  approval_blockers: string[]
   review_path: 'qualification_verified' | 'profile_reviewed' | null
   approval_outcome: 'basic' | 'qualification_verified' | 'profile_reviewed'
   can_approve: boolean
@@ -48,18 +50,13 @@ function formatDocumentStatus(status: string) {
 }
 
 function getApprovalBlocker(tutor: PendingTutor) {
-  const missingItems: string[] = []
-
-  if (!tutor.phone?.trim()) missingItems.push('phone number')
-  if (!tutor.location?.trim()) missingItems.push('location')
-  if (!Array.isArray(tutor.subjects) || tutor.subjects.length === 0) missingItems.push('at least one subject')
-  if (!tutor.hourly_rate || tutor.hourly_rate <= 0) missingItems.push('a valid hourly rate')
+  const missingItems = tutor.approval_blockers ?? []
 
   if (missingItems.length === 0) {
-    return 'This tutor still needs a complete core public profile before approval.'
+    return 'This tutor still needs a complete public profile before approval.'
   }
 
-  return `This tutor still needs these core public profile details before approval: ${missingItems.join(', ')}.`
+  return `Cannot be listed publicly yet. Still missing: ${missingItems.join(', ')}.`
 }
 
 function getFollowUpMessage(tutor: PendingTutor) {
@@ -68,10 +65,10 @@ function getFollowUpMessage(tutor: PendingTutor) {
   }
 
   if (tutor.is_approved) {
-    return 'This tutor is already live as Basic. Keep them here until they upload the missing verification items and are ready for an upgrade.'
+    return 'This tutor is already live as Basic. Keep them here until their documents are approved and they are ready for an upgrade.'
   }
 
-  return 'You can approve this tutor as Basic now. They can stay live temporarily while they upload a profile photo and supporting documents.'
+  return 'You can approve this tutor as Basic now. Their photo and review document are on file; approving the document itself upgrades their public label.'
 }
 
 export default function AdminTutorsPage() {
@@ -130,7 +127,7 @@ export default function AdminTutorsPage() {
     }
   }, [])
 
-  async function updateTutor(tutorId: string, action: 'approve' | 'reject') {
+  async function updateTutor(tutorId: string, action: 'approve' | 'reject' | 'request_changes') {
     setProcessingId(tutorId)
     setError('')
     setToast('')
@@ -142,12 +139,14 @@ export default function AdminTutorsPage() {
         body: JSON.stringify({
           tutorId,
           action,
-          reason: action === 'reject' ? rejectReason.trim() : null,
+          reason: action === 'approve' ? null : rejectReason.trim() || null,
         }),
       })
       const payload = (await response.json()) as {
         error?: string
         approval_outcome?: PendingTutor['approval_outcome']
+        blockers?: string[]
+        email_sent?: boolean
       }
       if (!response.ok) {
         throw new Error(payload.error || 'Could not update tutor.')
@@ -156,7 +155,13 @@ export default function AdminTutorsPage() {
       setRejectId('')
       setRejectReason('')
       await loadTutors()
-      if (action === 'approve') {
+      if (action === 'request_changes') {
+        setToast(
+          payload.email_sent
+            ? `Emailed ${payload.blockers?.length ?? 0} missing item${payload.blockers?.length === 1 ? '' : 's'} to the tutor.`
+            : 'Could not send the email. Check the tutor has a valid email address.'
+        )
+      } else if (action === 'approve') {
         setToast(
           payload.approval_outcome === 'basic'
             ? 'Tutor approved as Basic.'
@@ -291,9 +296,17 @@ export default function AdminTutorsPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => void updateTutor(tutor.id, 'request_changes')}
+                  disabled={processingId === tutor.id}
+                  className="rounded-lg border border-sky-300 px-4 py-2 text-sky-700 hover:bg-sky-50 disabled:opacity-60"
+                >
+                  Email what is missing
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
-                    setRejectId((current) => (current === tutor.id ? '' : tutor.id))
-                    setRejectReason('')
+                    setRejectId(tutor.id)
+                    document.getElementById(`message-${tutor.id}`)?.focus()
                   }}
                   disabled={processingId === tutor.id}
                   className="rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-60"
@@ -302,23 +315,40 @@ export default function AdminTutorsPage() {
                 </button>
               </div>
 
-              {rejectId === tutor.id && (
+              {!tutor.is_approved && (
                 <div className="mt-4">
-                  <input
-                    type="text"
-                    value={rejectReason}
-                    onChange={(event) => setRejectReason(event.target.value)}
-                    placeholder="Reason (internal note only)"
-                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-red-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void updateTutor(tutor.id, 'reject')}
-                    disabled={processingId === tutor.id}
-                    className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:opacity-60"
+                  <label
+                    htmlFor={`message-${tutor.id}`}
+                    className="mb-1 block text-sm font-medium text-gray-700"
                   >
-                    {processingId === tutor.id ? 'Processing...' : 'Confirm Reject'}
-                  </button>
+                    Message to the tutor
+                  </label>
+                  <textarea
+                    id={`message-${tutor.id}`}
+                    rows={2}
+                    value={rejectId === tutor.id ? rejectReason : ''}
+                    onFocus={() => setRejectId(tutor.id)}
+                    onChange={(event) => {
+                      setRejectId(tutor.id)
+                      setRejectReason(event.target.value)
+                    }}
+                    placeholder="e.g. Your hourly rate is above the GMD 400 maximum. Please lower it and we will review again."
+                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="mt-2 text-xs text-gray-600">
+                    Sent to the tutor word for word. Optional when emailing what is
+                    missing; required to reject.
+                  </p>
+                  {rejectId === tutor.id && rejectReason.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => void updateTutor(tutor.id, 'reject')}
+                      disabled={processingId === tutor.id}
+                      className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {processingId === tutor.id ? 'Processing...' : 'Confirm Reject'}
+                    </button>
+                  )}
                 </div>
               )}
             </article>

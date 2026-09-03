@@ -1,3 +1,20 @@
+// Maximum hourly rate a tutor may set. Deliberately NOT shown as guidance on the
+// registration form -- it surfaces only when a tutor tries to exceed it, so it
+// reads as a ceiling rather than a target rate to aim for.
+export const MAX_TUTOR_HOURLY_RATE = 400
+
+export function getHourlyRateError(rate: number) {
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return 'Please enter a valid hourly rate greater than 0.'
+  }
+
+  if (rate > MAX_TUTOR_HOURLY_RATE) {
+    return `Your hourly rate is above the maximum allowed on TutorConnect. The highest rate a tutor can charge is GMD ${MAX_TUTOR_HOURLY_RATE.toLocaleString()} per hour. Please enter GMD ${MAX_TUTOR_HOURLY_RATE.toLocaleString()} or less.`
+  }
+
+  return ''
+}
+
 // Single source of truth for every money calculation in the app.
 //
 // These functions are PURE and ISOMORPHIC: no secrets, no server-only imports,

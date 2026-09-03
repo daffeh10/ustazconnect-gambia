@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import { BASIC_TUTOR_GRACE_ENABLED, DIASPORA_QURAN_ENABLED } from '@/lib/features'
+import { getHourlyRateError } from '@/lib/pricing'
 import {
   allocateMonthlyLessonEarning,
   computeLessonEarning,
@@ -631,8 +632,9 @@ export default function DashboardPage() {
 
     try {
       const hourlyRateValue = hourlyRate.trim() === '' ? 0 : Number(hourlyRate)
-      if (Number.isNaN(hourlyRateValue) || hourlyRateValue < 0) {
-        throw new Error('Hourly rate must be a valid non-negative number.')
+      const hourlyRateError = getHourlyRateError(hourlyRateValue)
+      if (hourlyRateError) {
+        throw new Error(hourlyRateError)
       }
 
       const experienceValue = experienceYears.trim() === '' ? 0 : Number(experienceYears)
@@ -1025,7 +1027,11 @@ export default function DashboardPage() {
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 font-semibold">{profilePhotoUrl ? 'Done:' : 'Missing:'}</span>
                   <span>
-                    {profilePhotoUrl ? 'Your profile photo has been uploaded.' : 'Add a clear profile photo to complete your profile.'}{' '}
+                    {profilePhotoUrl
+                      ? 'Your profile photo has been uploaded.'
+                      : isApproved
+                        ? 'Add a clear profile photo so families can recognise you.'
+                        : 'Add a clear profile photo. Your profile cannot be listed publicly without one.'}{' '}
                     <a href="#profile-photo" className="underline underline-offset-2">
                       Go to photo upload
                     </a>
@@ -1046,7 +1052,9 @@ export default function DashboardPage() {
                         ? 'Your review document has been approved.'
                         : hasPendingReviewDocument
                           ? 'We have received your review document and it is waiting for admin review.'
-                          : 'Add at least one review document so we can assess your profile for stronger verification.'}{' '}
+                          : isApproved
+                            ? 'Add at least one review document so we can assess your profile for stronger verification.'
+                            : 'Add at least one review document. Your profile cannot be listed publicly until we have one to check.'}{' '}
                     <a href="#documents" className="underline underline-offset-2">
                       Go to documents
                     </a>
@@ -1763,6 +1771,12 @@ export default function DashboardPage() {
                       tutorId={profileId}
                       documentType="teaching_reference"
                       label="Teaching reference or other competence proof (for Profile Reviewed)"
+                      onDocumentStatusChange={handleDocumentStatusChange}
+                    />
+                    <DocumentUpload
+                      tutorId={profileId}
+                      documentType="national_id"
+                      label="National ID (helps us confirm who you are)"
                       onDocumentStatusChange={handleDocumentStatusChange}
                     />
                     <DocumentUpload

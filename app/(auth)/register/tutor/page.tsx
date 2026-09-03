@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getHourlyRateError } from '@/lib/pricing'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import SearchableMultiSelect from '@/app/components/SearchableMultiSelect'
 import { trackFunnelEvent } from '@/lib/funnel'
@@ -117,8 +118,9 @@ export default function RegisterTutorPage() {
       return false
     }
 
-    if (Number.isNaN(parsedHourlyRate) || parsedHourlyRate <= 0) {
-      setError('Please enter a valid hourly rate greater than 0.')
+    const hourlyRateError = getHourlyRateError(parsedHourlyRate)
+    if (hourlyRateError) {
+      setError(hourlyRateError)
       return false
     }
 

@@ -93,6 +93,33 @@ export function isTutorPubliclyVisible({
   return !getBasicTutorGraceInfo(createdAt, now).isExpired
 }
 
+// The documents that count as evidence for a public listing. A CV is explicitly
+// optional supporting material and national_id proves identity, not competence,
+// so neither satisfies the listing requirement on its own.
+export const REVIEW_DOCUMENT_TYPES = ['certificate', 'study_proof', 'teaching_reference'] as const
+
+export interface TutorDocumentStatusRow {
+  document_type: string
+  status: string | null
+}
+
+/**
+ * True when the tutor has at least one review document on file that an admin has
+ * not rejected. Pending counts: the admin is looking at it when they approve, and
+ * an approved document is what lifts the tutor above Basic.
+ */
+export function hasReviewDocumentOnFile(documents: TutorDocumentStatusRow[]) {
+  return documents.some((document) => {
+    const normalizedType = document.document_type.toLowerCase().trim()
+    const normalizedStatus = (document.status || 'pending').toLowerCase().trim()
+
+    return (
+      (REVIEW_DOCUMENT_TYPES as readonly string[]).includes(normalizedType) &&
+      normalizedStatus !== 'rejected'
+    )
+  })
+}
+
 export function getTutorReviewPathFromApprovedDocumentTypes(documentTypes: string[]) {
   const normalizedTypes = new Set(
     documentTypes.map((documentType) => documentType.toLowerCase().trim())
