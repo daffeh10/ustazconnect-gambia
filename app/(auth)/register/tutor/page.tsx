@@ -498,7 +498,7 @@ export default function RegisterTutorPage() {
                 <div className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
+                  Email Address *
                 </label>
                 <input
                   id="email"
@@ -516,7 +516,7 @@ export default function RegisterTutorPage() {
 
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
+                  Password *
                 </label>
                 <input
                   id="password"
@@ -535,7 +535,7 @@ export default function RegisterTutorPage() {
 
               <div>
                 <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm Password
+                  Confirm Password *
                 </label>
                 <input
                   id="confirm-password"
