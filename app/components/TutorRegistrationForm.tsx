@@ -418,6 +418,7 @@ export default function TutorRegistrationForm({
                 <input
                   id="name"
                   type="text"
+                  autoComplete="off"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -518,6 +519,7 @@ export default function TutorRegistrationForm({
                 <input
                   id="hourly-rate"
                   type="number"
+                  autoComplete="off"
                   min="1"
                   value={hourlyRate}
                   onChange={(e) => setHourlyRate(e.target.value)}
@@ -537,6 +539,7 @@ export default function TutorRegistrationForm({
                 <input
                   id="email"
                   type="email"
+                  autoComplete="off"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -555,6 +558,7 @@ export default function TutorRegistrationForm({
                 <input
                   id="password"
                   type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -574,6 +578,7 @@ export default function TutorRegistrationForm({
                 <input
                   id="confirm-password"
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -693,6 +698,7 @@ export default function TutorRegistrationForm({
                   <input
                     id="experience-years"
                     type="number"
+                    autoComplete="off"
                     min="0"
                     max="50"
                     value={experienceYears}
