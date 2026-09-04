@@ -9,6 +9,10 @@ interface SearchableMultiSelectProps {
   onChange: (values: string[]) => void
   placeholder: string
   helperText?: string
+  // Renders a translated label while the stored value stays canonical English.
+  getOptionLabel?: (value: string) => string
+  removeLabel?: (value: string) => string
+  emptyText?: string
 }
 
 export default function SearchableMultiSelect({
@@ -18,7 +22,14 @@ export default function SearchableMultiSelect({
   onChange,
   placeholder,
   helperText,
+  getOptionLabel,
+  removeLabel,
+  emptyText,
 }: SearchableMultiSelectProps) {
+  const toLabel = useMemo(
+    () => getOptionLabel ?? ((value: string) => value),
+    [getOptionLabel]
+  )
   const inputId = useId()
   const [query, setQuery] = useState('')
 
@@ -26,9 +37,14 @@ export default function SearchableMultiSelect({
     const normalizedQuery = query.trim().toLowerCase()
     return options
       .filter((option) => !values.includes(option))
-      .filter((option) => !normalizedQuery || option.toLowerCase().includes(normalizedQuery))
+      .filter(
+        (option) =>
+          !normalizedQuery ||
+          option.toLowerCase().includes(normalizedQuery) ||
+          toLabel(option).toLowerCase().includes(normalizedQuery)
+      )
       .slice(0, 12)
-  }, [options, query, values])
+  }, [options, query, values, toLabel])
 
   function addValue(value: string) {
     onChange([...values, value])
@@ -52,10 +68,10 @@ export default function SearchableMultiSelect({
               type="button"
               onClick={() => removeValue(value)}
               className="inline-flex min-h-12 items-center rounded-full bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
-              aria-label={`Remove ${value}`}
+              aria-label={removeLabel ? removeLabel(value) : `Remove ${value}`}
             >
-              {value}
-              <span aria-hidden="true" className="ml-2 text-emerald-600">×</span>
+              {toLabel(value)}
+              <span aria-hidden="true" className="ms-2 text-emerald-600">×</span>
             </button>
           ))}
         </div>
@@ -77,13 +93,13 @@ export default function SearchableMultiSelect({
                 key={option}
                 type="button"
                 onClick={() => addValue(option)}
-                className="block min-h-12 w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-800"
+                className="block min-h-12 w-full rounded-md px-3 py-2 text-start text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-800"
               >
-                {option}
+                {toLabel(option)}
               </button>
             ))
           ) : (
-            <p className="px-3 py-2 text-sm text-gray-500">No matching options.</p>
+            <p className="px-3 py-2 text-sm text-gray-500">{emptyText ?? 'No matching options.'}</p>
           )}
         </div>
       )}

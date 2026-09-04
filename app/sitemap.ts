@@ -43,6 +43,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     },
     {
+      // Arabic tutor registration, for Quran teachers who do not read English.
+      url: `${baseUrl}/register/tutor`,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/register/tutor/ar`,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
       url: `${baseUrl}/login`,
       changeFrequency: 'monthly',
       priority: 0.6,
