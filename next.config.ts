@@ -1,17 +1,25 @@
 import type { NextConfig } from "next";
 
+// Next's webpack dev bundles evaluate module code with eval(), and dev HMR opens
+// a websocket back to localhost. Without these two allowances in development the
+// browser blocks the dev bundle, React never hydrates, and the local site renders
+// as static HTML with nothing clickable. Neither is ever emitted in production.
+const isDevelopment = process.env.NODE_ENV !== "production";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.supabase.co",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-  "upgrade-insecure-requests",
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co${
+    isDevelopment ? " ws://localhost:* http://localhost:*" : ""
+  }`,
+  ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 const nextConfig: NextConfig = {
