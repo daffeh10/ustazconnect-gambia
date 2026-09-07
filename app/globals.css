@@ -4,8 +4,25 @@ html,
 body {
   max-width: 100%;
   overflow-x: clip;
+
+  /* Stop the page rubber-banding past its own edges on touch devices. Without
+     this, iOS Safari drags the whole document past the top and bottom and
+     Android Chrome adds an overscroll glow plus pull-to-refresh, so the page
+     never appears to stop at its boundary. */
+  overscroll-behavior: none;
 }
 
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Tailwind's min-h-screen is 100vh, and on a phone 100vh means the viewport
+   with the browser chrome RETRACTED -- always taller than what you can see
+   while the URL bar is showing. Every full-height page therefore scrolls past
+   its own content. 100dvh tracks the visible viewport instead.
+   Wrapped in @supports so browsers without dvh keep the 100vh behaviour. */
+@supports (min-height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
 }
