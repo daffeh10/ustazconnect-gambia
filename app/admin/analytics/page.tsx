@@ -28,6 +28,8 @@ interface AnalyticsPayload {
   topLocations: ChartPoint[]
   funnel: ChartPoint[]
   searchDemand: ChartPoint[]
+  searchLocations: ChartPoint[]
+  searchesWeekly: ChartPoint[]
   error?: string
 }
 
@@ -242,6 +244,44 @@ export default function AdminAnalyticsPage() {
                   />
                   <Tooltip />
                   <Bar dataKey="value" fill="#059669" name="Events" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          <ChartCard title="Searches Per Week">
+            {!data ? (
+              <EmptyChartState error={noDataMessage} />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data.searchesWeekly}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="value" stroke="#0284c7" strokeWidth={3} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          <ChartCard title="Most Searched Areas (Last 30 Days)">
+            {!data || data.searchLocations.length === 0 ? (
+              <EmptyChartState error={noDataMessage} />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.searchLocations} layout="vertical" margin={{ left: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    width={130}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#d97706" name="Searches" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

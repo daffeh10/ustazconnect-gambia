@@ -19,7 +19,7 @@ import StarRating from '@/app/components/StarRating'
 import Avatar from '@/app/components/Avatar'
 import SearchableLocationInput from '@/app/components/SearchableLocationInput'
 import SearchableSubjectInput from '@/app/components/SearchableSubjectInput'
-import { DIASPORA_QURAN_ENABLED } from '@/lib/features'
+import { DIASPORA_QURAN_ENABLED, TUTOR_SEARCH_HELP_ENABLED } from '@/lib/features'
 import {
   normalizeTutorSubject,
   normalizeTutorSubjects,
@@ -522,7 +522,8 @@ function FindUstazInner() {
         {!isLoading && !error && filteredUstazs.length === 0 && (
           <div className="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
             <p className="text-gray-600 mb-4">
-              We do not have a tutor matching all these filters yet.
+              We do not have a tutor matching all these filters yet. Try removing a
+              filter, or search a nearby area — new tutors join every week.
             </p>
             <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
               <button
@@ -537,23 +538,24 @@ function FindUstazInner() {
               >
                 Clear Filters
               </button>
-              {supportWhatsappLink ? (
-                <a
-                  href={supportWhatsappLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex min-h-12 items-center rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
-                >
-                  Ask TutorConnect on WhatsApp
-                </a>
-              ) : (
-                <a
-                  href={`mailto:tutorconnectgambia@gmail.com?subject=${encodeURIComponent('Help finding a tutor')}&body=${encodeURIComponent(supportMessage)}`}
-                  className="inline-flex min-h-12 items-center rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
-                >
-                  Ask TutorConnect for Help
-                </a>
-              )}
+              {TUTOR_SEARCH_HELP_ENABLED &&
+                (supportWhatsappLink ? (
+                  <a
+                    href={supportWhatsappLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-12 items-center rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Ask TutorConnect on WhatsApp
+                  </a>
+                ) : (
+                  <a
+                    href={`mailto:tutorconnectgambia@gmail.com?subject=${encodeURIComponent('Help finding a tutor')}&body=${encodeURIComponent(supportMessage)}`}
+                    className="inline-flex min-h-12 items-center rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Ask TutorConnect for Help
+                  </a>
+                ))}
             </div>
           </div>
         )}

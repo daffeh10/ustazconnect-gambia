@@ -30,6 +30,7 @@ interface ChartPoint {
 interface FunnelAnalyticsRow {
   event_name: string
   properties: Record<string, unknown> | null
+  created_at: string | null
 }
 
 function startOfWeek(date: Date) {
@@ -127,8 +128,8 @@ export async function GET() {
       supabase.from('payments').select('paid_at,total').eq('status', 'completed'),
       supabase
         .from('funnel_events')
-        .select('event_name,properties')
-        .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+        .select('event_name,properties,created_at')
+        .gte('created_at', new Date(Date.now() - 63 * 24 * 60 * 60 * 1000).toISOString()),
     ])
 
     const errors = [
@@ -160,9 +161,18 @@ export async function GET() {
       tutors.map((row) => row.location ?? '').filter(Boolean),
       5
     )
-    const funnelRows = funnelResult.error
+    const allFunnelRows = funnelResult.error
       ? []
       : (funnelResult.data ?? []) as FunnelAnalyticsRow[]
+
+    // The funnel and the two "top" lists stay on 30 days; only the weekly search
+    // series uses the wider window the query now fetches.
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    const funnelRows = allFunnelRows.filter((row) => {
+      if (!row.created_at) return false
+      const at = new Date(row.created_at).getTime()
+      return !Number.isNaN(at) && at >= thirtyDaysAgo
+    })
     const funnelLabels: Record<string, string> = {
       marketplace_search: 'Searches',
       tutor_profile_viewed: 'Profile views',
@@ -175,12 +185,25 @@ export async function GET() {
       label,
       value: funnelRows.filter((row) => row.event_name === eventName).length,
     }))
+    const isSearch = (row: FunnelAnalyticsRow) => row.event_name === 'marketplace_search'
+    const recentSearches = funnelRows.filter(isSearch)
+    const searchText = (row: FunnelAnalyticsRow, key: 'subject' | 'location') => {
+      const value = row.properties?.[key]
+      return typeof value === 'string' ? value.trim() : ''
+    }
+
     const searchDemand = topCounts(
-      funnelRows
-        .filter((row) => row.event_name === 'marketplace_search')
-        .map((row) => row.properties?.subject)
-        .filter((subject): subject is string => typeof subject === 'string' && subject.trim().length > 0),
+      recentSearches.map((row) => searchText(row, 'subject')).filter(Boolean),
       8
+    )
+    // Roughly half of all searches carry a location and no subject, so charting
+    // subjects alone discards most of the demand signal.
+    const searchLocations = topCounts(
+      recentSearches.map((row) => searchText(row, 'location')).filter(Boolean),
+      8
+    )
+    const searchesWeekly = bucketWeeklyDates(
+      allFunnelRows.filter(isSearch).map((row) => row.created_at)
     )
 
     return NextResponse.json({
@@ -192,6 +215,8 @@ export async function GET() {
       topLocations,
       funnel,
       searchDemand,
+      searchLocations,
+      searchesWeekly,
     })
   } catch (error) {
     console.error('admin analytics failed', error)
