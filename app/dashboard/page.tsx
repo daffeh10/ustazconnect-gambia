@@ -6,7 +6,11 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ALL_LOCATIONS, ALL_SUBJECTS } from '@/lib/constants'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
-import { BASIC_TUTOR_GRACE_ENABLED, DIASPORA_QURAN_ENABLED } from '@/lib/features'
+import {
+  BASIC_TUTOR_GRACE_ENABLED,
+  DIASPORA_QURAN_ENABLED,
+  TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT,
+} from '@/lib/features'
 import { getHourlyRateError } from '@/lib/pricing'
 import {
   allocateMonthlyLessonEarning,
@@ -992,7 +996,11 @@ export default function DashboardPage() {
           <p className="text-base text-gray-600 mt-2">Update your profile to help families find you faster.</p>
           {!isApproved && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Your tutor profile is under review. Before we can list it publicly, upload a clear profile photo and at least one review document. We aim to respond within 5 working days. Questions: {TUTOR_REVIEW_CONTACT_EMAIL}
+              Your tutor profile is under review.{' '}
+              {TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT
+                ? 'Before we can list it publicly, upload a clear profile photo and at least one review document.'
+                : 'Adding a profile photo and a review document is not required, but it helps us review you faster and helps families choose you.'}{' '}
+              We aim to respond within 5 working days. Questions: {TUTOR_REVIEW_CONTACT_EMAIL}
             </div>
           )}
           {shouldShowVerificationChecklist && profileId && (
@@ -1029,7 +1037,7 @@ export default function DashboardPage() {
                   <span>
                     {profilePhotoUrl
                       ? 'Your profile photo has been uploaded.'
-                      : isApproved
+                      : isApproved || !TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT
                         ? 'Add a clear profile photo so families can recognise you.'
                         : 'Add a clear profile photo. Your profile cannot be listed publicly without one.'}{' '}
                     <a href="#profile-photo" className="underline underline-offset-2">
@@ -1052,7 +1060,7 @@ export default function DashboardPage() {
                         ? 'Your review document has been approved.'
                         : hasPendingReviewDocument
                           ? 'We have received your review document and it is waiting for admin review.'
-                          : isApproved
+                          : isApproved || !TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT
                             ? 'Add at least one review document so we can assess your profile for stronger verification.'
                             : 'Add at least one review document. Your profile cannot be listed publicly until we have one to check.'}{' '}
                     <a href="#documents" className="underline underline-offset-2">

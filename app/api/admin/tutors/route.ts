@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { composeEmail, sendEmail } from '@/lib/email'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
+import { TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT } from '@/lib/features'
+import { MAX_TUTOR_HOURLY_RATE } from '@/lib/pricing'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
 import {
   TUTOR_REVIEW_CONTACT_EMAIL,
@@ -65,21 +67,22 @@ function hasCoreProfileDetails(tutor: TutorRow) {
     Array.isArray(tutor.subjects) &&
     tutor.subjects.length > 0 &&
     typeof tutor.hourly_rate === 'number' &&
-    tutor.hourly_rate > 0
+    tutor.hourly_rate > 0 &&
+    tutor.hourly_rate <= MAX_TUTOR_HOURLY_RATE
   )
 }
 
 /**
- * The gate for listing a tutor publicly. This is the promise the tutor
- * dashboard makes to them ("upload a clear profile photo and at least one
- * review document"), so it has to be enforced here or the copy is a lie.
+ * The gate for listing a tutor publicly. Core profile details are always
+ * required. The photo and review document are only required when
+ * TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT is on -- whatever this enforces has
+ * to match what the tutor dashboard promises, or the copy becomes a lie.
  */
 function isReadyForBasicApproval(tutor: TutorRow, documents: TutorDocumentRow[]) {
-  return (
-    hasCoreProfileDetails(tutor) &&
-    Boolean(tutor.profile_photo_url) &&
-    hasReviewDocumentOnFile(documents)
-  )
+  if (!hasCoreProfileDetails(tutor)) return false
+  if (!TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT) return true
+
+  return Boolean(tutor.profile_photo_url) && hasReviewDocumentOnFile(documents)
 }
 
 function describeApprovalBlockers(tutor: TutorRow, documents: TutorDocumentRow[]) {
@@ -92,10 +95,18 @@ function describeApprovalBlockers(tutor: TutorRow, documents: TutorDocumentRow[]
   }
   if (typeof tutor.hourly_rate !== 'number' || tutor.hourly_rate <= 0) {
     missing.push('a valid hourly rate')
+  } else if (tutor.hourly_rate > MAX_TUTOR_HOURLY_RATE) {
+    // Listing above the cap would bill families that rate at checkout, which
+    // recomputes from this column.
+    missing.push(
+      `an hourly rate of GMD ${MAX_TUTOR_HOURLY_RATE.toLocaleString()} or less (currently GMD ${tutor.hourly_rate.toLocaleString()})`
+    )
   }
-  if (!tutor.profile_photo_url) missing.push('a profile photo')
-  if (!hasReviewDocumentOnFile(documents)) {
-    missing.push('at least one review document that has not been rejected')
+  if (TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT) {
+    if (!tutor.profile_photo_url) missing.push('a profile photo')
+    if (!hasReviewDocumentOnFile(documents)) {
+      missing.push('at least one review document that has not been rejected')
+    }
   }
 
   return missing
@@ -173,7 +184,13 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ tutors: enrichedTutors })
+    return NextResponse.json({
+      tutors: enrichedTutors,
+      canVouch: hasAdminRole(admin, ['owner']),
+      // Surfaced so a missing key shows as a banner rather than being discovered
+      // one silently unsent email at a time.
+      emailConfigured: Boolean(process.env.RESEND_API_KEY),
+    })
   } catch (error) {
     console.error('admin tutors fetch failed', error)
     return NextResponse.json({ error: 'Could not load pending tutors.' }, { status: 500 })
@@ -191,7 +208,7 @@ export async function PATCH(request: Request) {
     const tutorId = typeof body?.tutorId === 'string' ? body.tutorId.trim() : ''
     const action = typeof body?.action === 'string' ? body.action.trim().toLowerCase() : ''
 
-    if (!tutorId || !['approve', 'reject', 'request_changes'].includes(action)) {
+    if (!tutorId || !['approve', 'reject', 'request_changes', 'vouch'].includes(action)) {
       return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
     }
 
@@ -206,6 +223,100 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = createAdminClient()
+
+    // Personal-authority override: approve a tutor and set their public trust
+    // label from first-hand knowledge rather than uploaded documents. Restricted
+    // to the owner, and the reason is mandatory because the audit log is the
+    // only record of why a tutor carries a badge with no document behind it.
+    if (action === 'vouch') {
+      if (!hasAdminRole(admin, ['owner'])) {
+        return NextResponse.json(
+          { error: 'Only the account owner can approve a tutor on personal knowledge.' },
+          { status: 403 }
+        )
+      }
+
+      const requested = typeof body?.verificationStatus === 'string'
+        ? body.verificationStatus.trim().toLowerCase()
+        : ''
+      const allowed = ['basic', 'profile_reviewed', 'qualification_verified']
+
+      if (!allowed.includes(requested)) {
+        return NextResponse.json({ error: 'Choose a valid verification level.' }, { status: 400 })
+      }
+      if (!reason) {
+        return NextResponse.json(
+          { error: 'Please record how you know this tutor qualifies. It is kept in the audit log.' },
+          { status: 400 }
+        )
+      }
+
+      const { data: tutor, error: tutorError } = await supabase
+        .from('tutor_profiles')
+        .select('id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,is_test_account,created_at')
+        .eq('id', tutorId)
+        .maybeSingle()
+
+      if (tutorError) throw tutorError
+      const vouchedTutor = tutor as TutorRow | null
+      if (!vouchedTutor) return NextResponse.json({ error: 'Tutor not found.' }, { status: 404 })
+
+      // Core details still apply -- a tutor with no rate or area cannot be booked.
+      if (!hasCoreProfileDetails(vouchedTutor)) {
+        return NextResponse.json(
+          {
+            error: `This tutor still needs: ${describeApprovalBlockers(vouchedTutor, []).join(', ')}.`,
+          },
+          { status: 400 }
+        )
+      }
+
+      const { error: vouchError } = await supabase
+        .from('tutor_profiles')
+        .update({
+          is_approved: true,
+          verification_status: requested,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tutorId)
+
+      if (vouchError) throw vouchError
+
+      await writeAdminAuditLog({
+        admin,
+        action: 'tutor.vouched',
+        targetType: 'tutor_profile',
+        targetId: tutorId,
+        metadata: {
+          verification_status: requested,
+          reason,
+          had_profile_photo: Boolean(vouchedTutor.profile_photo_url),
+        },
+      })
+
+      let vouchEmailSent = false
+      if (vouchedTutor.email) {
+        const vouchEmail = await sendEmail({
+          to: vouchedTutor.email,
+          subject: 'Your TutorConnect tutor profile is approved',
+          text: composeEmail([
+            `Hi ${vouchedTutor.name || 'Tutor'},`,
+            '',
+            `Your tutor profile has been approved as ${requested.replace('_', ' ')}.`,
+            'Families can now find your profile and send booking requests.',
+            '',
+            'Adding a profile photo and your certificates keeps this label in place as we introduce document checks.',
+          ]),
+        })
+        vouchEmailSent = vouchEmail.sent
+      }
+
+      return NextResponse.json({
+        ok: true,
+        verification_status: requested,
+        email_sent: vouchEmailSent,
+      })
+    }
 
     // Tell a tutor exactly what is still missing, without rejecting them.
     if (action === 'request_changes') {
@@ -331,8 +442,9 @@ export async function PATCH(request: Request) {
         metadata: { approval_outcome: approvalOutcome },
       })
 
+      let approvalEmailSent = false
       if (tutor.email) {
-        await sendEmail({
+        const approvalEmail = await sendEmail({
           to: tutor.email,
           subject: 'Your TutorConnect tutor profile is approved',
           text: composeEmail([
@@ -342,11 +454,13 @@ export async function PATCH(request: Request) {
             'Families can now find your profile and send booking requests.',
           ]),
         })
+        approvalEmailSent = approvalEmail.sent
       }
 
       return NextResponse.json({
         ok: true,
         approval_outcome: approvalOutcome,
+        email_sent: approvalEmailSent,
       })
     }
 
@@ -375,8 +489,9 @@ export async function PATCH(request: Request) {
       .eq('id', tutorId)
       .maybeSingle<{ name: string | null; email: string | null }>()
 
+    let rejectionEmailSent = false
     if (rejectedTutor?.email) {
-      await sendEmail({
+      const rejectionEmail = await sendEmail({
         to: rejectedTutor.email,
         subject: 'TutorConnect profile review update',
         text: composeEmail([
@@ -390,9 +505,10 @@ export async function PATCH(request: Request) {
           `Questions: ${TUTOR_REVIEW_CONTACT_EMAIL}`,
         ]),
       })
+      rejectionEmailSent = rejectionEmail.sent
     }
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, email_sent: rejectionEmailSent })
   } catch (error) {
     console.error('admin tutor update failed', error)
     return NextResponse.json({ error: 'Could not update tutor approval.' }, { status: 500 })

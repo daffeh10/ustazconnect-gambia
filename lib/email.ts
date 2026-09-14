@@ -16,7 +16,9 @@ export interface SendEmailResult {
 const RESEND_API_URL = 'https://api.resend.com/emails'
 const DEFAULT_FROM = 'TutorConnect Gambia <notifications@tutorconnectgambia.com>'
 const DEFAULT_REPLY_TO = 'tutorconnectgambia@gmail.com'
-const EMAIL_TIMEOUT_MS = 5_000
+// Resend on a cold serverless invocation regularly needs more than 5s, and an
+// abort here looks identical to "the email just never arrived".
+const EMAIL_TIMEOUT_MS = 10_000
 
 function getEmailFromAddress() {
   return process.env.RESEND_FROM_EMAIL || DEFAULT_FROM
@@ -64,7 +66,11 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     if (!response.ok) {
       const detail = await response.text()
       console.error('Resend email failed', { status: response.status, detail })
-      return { sent: false, skipped: false, error: 'Email provider rejected the message.' }
+      return {
+        sent: false,
+        skipped: false,
+        error: `Email provider rejected the message (HTTP ${response.status}). ${detail.slice(0, 200)}`,
+      }
     }
 
     return { sent: true, skipped: false }

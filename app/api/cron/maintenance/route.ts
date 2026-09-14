@@ -51,16 +51,32 @@ function describeBooking(booking: PendingBooking, { includeFamilyName }: { inclu
   ].filter(Boolean)
 }
 
-function isAuthorized(request: Request) {
+function getAuthStatus(request: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim()
-  return Boolean(
-    cronSecret &&
-    request.headers.get('authorization') === `Bearer ${cronSecret}`
-  )
+
+  // Distinguish "the server has no secret configured" from "the caller sent the
+  // wrong one". Both used to return 401, which made a missing environment
+  // variable look identical to a rejected request -- and Vercel only attaches the
+  // Authorization header when CRON_SECRET exists, so an unset secret means this
+  // job silently never runs.
+  if (!cronSecret) return 'not_configured' as const
+  if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+    return 'unauthorized' as const
+  }
+
+  return 'ok' as const
 }
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  const authStatus = getAuthStatus(request)
+  if (authStatus === 'not_configured') {
+    console.error('CRON_SECRET is not set, so scheduled maintenance can never run.')
+    return NextResponse.json(
+      { error: 'CRON_SECRET is not configured on the server, so this job cannot run.' },
+      { status: 503 }
+    )
+  }
+  if (authStatus === 'unauthorized') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

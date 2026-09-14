@@ -68,7 +68,9 @@ function getFollowUpMessage(tutor: PendingTutor) {
     return 'This tutor is already live as Basic. Keep them here until their documents are approved and they are ready for an upgrade.'
   }
 
-  return 'You can approve this tutor as Basic now. Their photo and review document are on file; approving the document itself upgrades their public label.'
+  return tutor.has_profile_photo && tutor.has_review_document
+    ? 'You can approve this tutor as Basic now. Their photo and review document are on file; approving the document itself upgrades their public label.'
+    : 'You can approve this tutor as Basic now. A photo and review documents are not required for a Basic listing, but they are what lifts the tutor above the Basic label.'
 }
 
 export default function AdminTutorsPage() {
@@ -79,15 +81,25 @@ export default function AdminTutorsPage() {
   const [rejectId, setRejectId] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [processingId, setProcessingId] = useState('')
+  const [canVouch, setCanVouch] = useState(false)
+  const [emailConfigured, setEmailConfigured] = useState(true)
+  const [vouchLevel, setVouchLevel] = useState<Record<string, string>>({})
 
   async function loadTutors() {
     try {
       const response = await fetch('/api/admin/tutors')
-      const payload = (await response.json()) as { tutors?: PendingTutor[]; error?: string }
+      const payload = (await response.json()) as {
+          tutors?: PendingTutor[]
+          canVouch?: boolean
+          emailConfigured?: boolean
+          error?: string
+        }
       if (!response.ok) {
         throw new Error(payload.error || 'Could not load tutors.')
       }
       setTutors(payload.tutors || [])
+      setCanVouch(Boolean(payload.canVouch))
+      setEmailConfigured(payload.emailConfigured !== false)
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Could not load tutors.')
@@ -102,12 +114,19 @@ export default function AdminTutorsPage() {
     async function loadTutorsSafely() {
       try {
         const response = await fetch('/api/admin/tutors')
-        const payload = (await response.json()) as { tutors?: PendingTutor[]; error?: string }
+        const payload = (await response.json()) as {
+          tutors?: PendingTutor[]
+          canVouch?: boolean
+          emailConfigured?: boolean
+          error?: string
+        }
         if (!response.ok) {
           throw new Error(payload.error || 'Could not load tutors.')
         }
         if (isMounted) {
           setTutors(payload.tutors || [])
+          setCanVouch(Boolean(payload.canVouch))
+          setEmailConfigured(payload.emailConfigured !== false)
         }
       } catch (err) {
         console.error(err)
@@ -127,7 +146,10 @@ export default function AdminTutorsPage() {
     }
   }, [])
 
-  async function updateTutor(tutorId: string, action: 'approve' | 'reject' | 'request_changes') {
+  async function updateTutor(
+    tutorId: string,
+    action: 'approve' | 'reject' | 'request_changes' | 'vouch'
+  ) {
     setProcessingId(tutorId)
     setError('')
     setToast('')
@@ -140,6 +162,7 @@ export default function AdminTutorsPage() {
           tutorId,
           action,
           reason: action === 'approve' ? null : rejectReason.trim() || null,
+          verificationStatus: action === 'vouch' ? vouchLevel[tutorId] || 'basic' : undefined,
         }),
       })
       const payload = (await response.json()) as {
@@ -155,20 +178,25 @@ export default function AdminTutorsPage() {
       setRejectId('')
       setRejectReason('')
       await loadTutors()
-      if (action === 'request_changes') {
+      const emailNote = payload.email_sent === false ? ' (email NOT sent — check email setup)' : ''
+
+      if (action === 'vouch') {
+        setToast(
+          'Tutor approved on your personal knowledge and recorded in the audit log.' + emailNote
+        )
+      } else if (action === 'request_changes') {
         setToast(
           payload.email_sent
             ? `Emailed ${payload.blockers?.length ?? 0} missing item${payload.blockers?.length === 1 ? '' : 's'} to the tutor.`
-            : 'Could not send the email. Check the tutor has a valid email address.'
+            : 'Could not send the email. Check the tutor has an email address, and that RESEND_API_KEY is set.'
         )
       } else if (action === 'approve') {
         setToast(
-          payload.approval_outcome === 'basic'
-            ? 'Tutor approved as Basic.'
-            : 'Tutor approved.'
+          (payload.approval_outcome === 'basic' ? 'Tutor approved as Basic.' : 'Tutor approved.') +
+            emailNote
         )
       } else {
-        setToast('Tutor rejected.')
+        setToast('Tutor rejected.' + emailNote)
       }
     } catch (err) {
       console.error(err)
@@ -195,6 +223,27 @@ export default function AdminTutorsPage() {
         </div>
       </div>
 
+      <div className="mb-6 flex justify-end">
+        <a
+          href="/api/admin/email-test"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-12 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Test email delivery
+        </a>
+      </div>
+
+      {!emailConfigured && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <p className="font-medium">Email is not configured, so no tutor is being notified.</p>
+          <p className="mt-1 text-sm">
+            RESEND_API_KEY is missing on the server. Approvals, rejections and
+            &ldquo;email what is missing&rdquo; will all complete silently without
+            sending anything. Add the key in the Vercel project settings and redeploy.
+          </p>
+        </div>
+      )}
       {toast && (
         <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700">
           {toast}
@@ -315,6 +364,48 @@ export default function AdminTutorsPage() {
                 </button>
               </div>
 
+              {canVouch && !tutor.is_approved && (
+                <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-medium text-emerald-900">
+                    Approve on your personal knowledge
+                  </p>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    Use this when you know the tutor&apos;s qualifications first hand and
+                    they have not uploaded documents. Write how you know in the message
+                    box below — it is required, and it is kept in the audit log as the
+                    only record of why this tutor carries the badge.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                    <label htmlFor={`vouch-${tutor.id}`} className="sr-only">
+                      Verification level
+                    </label>
+                    <select
+                      id={`vouch-${tutor.id}`}
+                      value={vouchLevel[tutor.id] || 'qualification_verified'}
+                      onChange={(event) =>
+                        setVouchLevel((current) => ({
+                          ...current,
+                          [tutor.id]: event.target.value,
+                        }))
+                      }
+                      className="min-h-12 rounded-lg border border-emerald-300 bg-white px-4 text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="qualification_verified">Qualification Verified</option>
+                      <option value="profile_reviewed">Profile Reviewed</option>
+                      <option value="basic">Basic</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void updateTutor(tutor.id, 'vouch')}
+                      disabled={processingId === tutor.id || !rejectReason.trim()}
+                      className="min-h-12 rounded-lg bg-emerald-700 px-4 font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {processingId === tutor.id ? 'Processing...' : 'Approve on my authority'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {!tutor.is_approved && (
                 <div className="mt-4">
                   <label
@@ -336,8 +427,9 @@ export default function AdminTutorsPage() {
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <p className="mt-2 text-xs text-gray-600">
-                    Sent to the tutor word for word. Optional when emailing what is
-                    missing; required to reject.
+                    Sent to the tutor word for word when you email what is missing or
+                    reject. Required to reject, and required to approve on your own
+                    authority — where it is stored in the audit log instead.
                   </p>
                   {rejectId === tutor.id && rejectReason.trim() && (
                     <button
