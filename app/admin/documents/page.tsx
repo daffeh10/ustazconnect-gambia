@@ -10,7 +10,6 @@ interface PendingDocument {
   document_type: string
   document_name: string
   document_url: string
-  signed_url: string | null
   uploaded_at: string | null
 }
 
@@ -135,20 +134,14 @@ export default function AdminDocumentsPage() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                {document.signed_url ? (
-                  <a
-                    href={document.signed_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
-                  >
-                    View Document
-                  </a>
-                ) : (
-                  <span className="rounded-lg border border-gray-200 px-4 py-2 text-gray-400">
-                    Signed URL unavailable
-                  </span>
-                )}
+                <a
+                  href={`/api/admin/documents/view?id=${encodeURIComponent(document.id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                >
+                  View Document
+                </a>
                 <button
                   type="button"
                   onClick={() => void updateDocument(document.id, 'approved')}

@@ -60,20 +60,14 @@ export async function GET() {
       )
     }
 
-    const enrichedDocuments = await Promise.all(
-      documents.map(async (document) => {
-        const { data: signedUrlData } = await supabase.storage
-          .from('documents')
-          .createSignedUrl(document.document_url, 60)
-
-        return {
-          ...document,
-          tutor_name: tutorMap[document.tutor_id]?.name || 'Tutor',
-          tutor_email: tutorMap[document.tutor_id]?.email || 'No email',
-          signed_url: signedUrlData?.signedUrl || null,
-        }
-      })
-    )
+    // Documents are signed on demand by /api/admin/documents/view instead of
+    // here: signing at load time gave every link a 60 second lifetime, so only
+    // the first attachment an admin opened still worked.
+    const enrichedDocuments = documents.map((document) => ({
+      ...document,
+      tutor_name: tutorMap[document.tutor_id]?.name || 'Tutor',
+      tutor_email: tutorMap[document.tutor_id]?.email || 'No email',
+    }))
 
     return NextResponse.json({ documents: enrichedDocuments })
   } catch (error) {
