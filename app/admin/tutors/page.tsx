@@ -49,6 +49,13 @@ function formatDocumentStatus(status: string) {
   return 'Pending'
 }
 
+const PREVIEW_LABELS: Record<string, string> = {
+  request_changes: 'what is missing',
+  approve: 'approval',
+  reject: 'rejection',
+  vouch: 'my-authority approval',
+}
+
 function getApprovalBlocker(tutor: PendingTutor) {
   const missingItems = tutor.approval_blockers ?? []
 
@@ -78,12 +85,16 @@ export default function AdminTutorsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
-  const [rejectId, setRejectId] = useState('')
-  const [rejectReason, setRejectReason] = useState('')
+  const [notes, setNotes] = useState<Record<string, string>>({})
+  const [preview, setPreview] = useState<
+    { tutorId: string; to: string; subject: string; text: string; usesYourNote: boolean } | null
+  >(null)
   const [processingId, setProcessingId] = useState('')
   const [canVouch, setCanVouch] = useState(false)
   const [emailConfigured, setEmailConfigured] = useState(true)
   const [vouchLevel, setVouchLevel] = useState<Record<string, string>>({})
+
+  const noteFor = (tutorId: string) => notes[tutorId] || ''
 
   async function loadTutors() {
     try {
@@ -146,6 +157,38 @@ export default function AdminTutorsPage() {
     }
   }, [])
 
+  async function previewEmail(tutorId: string, previewAction: string) {
+    setError('')
+    setToast('')
+
+    try {
+      const response = await fetch('/api/admin/tutors', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tutorId,
+          action: 'preview',
+          previewAction,
+          reason: noteFor(tutorId).trim() || null,
+          verificationStatus: vouchLevel[tutorId] || 'qualification_verified',
+        }),
+      })
+      const payload = (await response.json()) as {
+        preview?: { to: string; subject: string; text: string; usesYourNote: boolean }
+        error?: string
+      }
+
+      if (!response.ok || !payload.preview) {
+        throw new Error(payload.error || 'Could not build the preview.')
+      }
+
+      setPreview({ tutorId, ...payload.preview })
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Could not build the preview.')
+    }
+  }
+
   async function updateTutor(
     tutorId: string,
     action: 'approve' | 'reject' | 'request_changes' | 'vouch'
@@ -161,8 +204,11 @@ export default function AdminTutorsPage() {
         body: JSON.stringify({
           tutorId,
           action,
-          reason: action === 'approve' ? null : rejectReason.trim() || null,
-          verificationStatus: action === 'vouch' ? vouchLevel[tutorId] || 'basic' : undefined,
+          // Every action now carries the admin's note; approve used to drop it
+          // silently, which sent stock text the admin thought they had replaced.
+          reason: noteFor(tutorId).trim() || null,
+          verificationStatus:
+            action === 'vouch' ? vouchLevel[tutorId] || 'qualification_verified' : undefined,
         }),
       })
       const payload = (await response.json()) as {
@@ -175,8 +221,8 @@ export default function AdminTutorsPage() {
         throw new Error(payload.error || 'Could not update tutor.')
       }
 
-      setRejectId('')
-      setRejectReason('')
+      setNotes((current) => ({ ...current, [tutorId]: '' }))
+      setPreview(null)
       await loadTutors()
       const emailNote = payload.email_sent === false ? ' (email NOT sent — check email setup)' : ''
 
@@ -353,10 +399,7 @@ export default function AdminTutorsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRejectId(tutor.id)
-                    document.getElementById(`message-${tutor.id}`)?.focus()
-                  }}
+                  onClick={() => document.getElementById(`message-${tutor.id}`)?.focus()}
                   disabled={processingId === tutor.id}
                   className="rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-60"
                 >
@@ -397,7 +440,7 @@ export default function AdminTutorsPage() {
                     <button
                       type="button"
                       onClick={() => void updateTutor(tutor.id, 'vouch')}
-                      disabled={processingId === tutor.id || !rejectReason.trim()}
+                      disabled={processingId === tutor.id || !noteFor(tutor.id).trim()}
                       className="min-h-12 rounded-lg bg-emerald-700 px-4 font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {processingId === tutor.id ? 'Processing...' : 'Approve on my authority'}
@@ -417,21 +460,63 @@ export default function AdminTutorsPage() {
                   <textarea
                     id={`message-${tutor.id}`}
                     rows={2}
-                    value={rejectId === tutor.id ? rejectReason : ''}
-                    onFocus={() => setRejectId(tutor.id)}
+                    value={noteFor(tutor.id)}
                     onChange={(event) => {
-                      setRejectId(tutor.id)
-                      setRejectReason(event.target.value)
+                      const value = event.target.value
+                      setNotes((current) => ({ ...current, [tutor.id]: value }))
+                      setPreview(null)
                     }}
                     placeholder="e.g. Your hourly rate is above the GMD 400 maximum. Please lower it and we will review again."
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <p className="mt-2 text-xs text-gray-600">
-                    Sent to the tutor word for word when you email what is missing or
-                    reject. Required to reject, and required to approve on your own
-                    authority — where it is stored in the audit log instead.
+                    Included word for word in whichever email you send. Required to
+                    reject, and required to approve on your own authority — where it is
+                    also stored in the audit log.
                   </p>
-                  {rejectId === tutor.id && rejectReason.trim() && (
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(['request_changes', 'approve', 'reject', 'vouch'] as const)
+                      .filter((previewAction) => previewAction !== 'vouch' || canVouch)
+                      .map((previewAction) => (
+                        <button
+                          key={previewAction}
+                          type="button"
+                          onClick={() => void previewEmail(tutor.id, previewAction)}
+                          disabled={processingId === tutor.id}
+                          className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          Preview {PREVIEW_LABELS[previewAction]} email
+                        </button>
+                      ))}
+                  </div>
+
+                  {preview?.tutorId === tutor.id && (
+                    <div className="mt-3 rounded-lg border border-gray-300 bg-gray-50 p-4">
+                      <p className="text-sm text-gray-600">
+                        To: <span className="font-medium text-gray-900">{preview.to}</span>
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Subject:{' '}
+                        <span className="font-medium text-gray-900">{preview.subject}</span>
+                      </p>
+                      {!preview.usesYourNote && (
+                        <p className="mt-2 text-sm text-amber-800">
+                          Your message box is empty, so this email contains only the
+                          standard text below.
+                        </p>
+                      )}
+                      <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-800">
+                        {preview.text}
+                      </pre>
+                      <p className="mt-2 text-xs text-gray-600">
+                        This is exactly what the tutor receives. Edit the message above
+                        and preview again, or use the buttons on this card to send.
+                      </p>
+                    </div>
+                  )}
+
+                  {noteFor(tutor.id).trim() && (
                     <button
                       type="button"
                       onClick={() => void updateTutor(tutor.id, 'reject')}

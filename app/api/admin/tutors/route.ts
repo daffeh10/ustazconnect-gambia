@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { composeEmail, sendEmail } from '@/lib/email'
+import { sendEmail } from '@/lib/email'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
 import { TUTOR_LISTING_REQUIRES_PHOTO_AND_DOCUMENT } from '@/lib/features'
 import { MAX_TUTOR_HOURLY_RATE } from '@/lib/pricing'
+import { buildTutorEmail, type TutorEmailAction } from '@/lib/tutor-emails'
 import { writeAdminAuditLog } from '@/lib/admin-audit'
 import {
-  TUTOR_REVIEW_CONTACT_EMAIL,
   getTutorDocumentTypeLabel,
   hasReviewDocumentOnFile,
   normalizeTutorVerificationStatus,
@@ -208,7 +208,9 @@ export async function PATCH(request: Request) {
     const tutorId = typeof body?.tutorId === 'string' ? body.tutorId.trim() : ''
     const action = typeof body?.action === 'string' ? body.action.trim().toLowerCase() : ''
 
-    if (!tutorId || !['approve', 'reject', 'request_changes', 'vouch'].includes(action)) {
+    const sendableActions: TutorEmailAction[] = ['approve', 'reject', 'request_changes', 'vouch']
+
+    if (!tutorId || ![...sendableActions, 'preview'].includes(action)) {
       return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
     }
 
@@ -223,6 +225,67 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = createAdminClient()
+
+    // Show the admin exactly what the tutor will receive, composed by the same
+    // builder the send path uses, so a preview can never drift from reality.
+    if (action === 'preview') {
+      const previewAction = typeof body?.previewAction === 'string'
+        ? body.previewAction.trim().toLowerCase()
+        : ''
+
+      if (!sendableActions.includes(previewAction as TutorEmailAction)) {
+        return NextResponse.json({ error: 'Choose an action to preview.' }, { status: 400 })
+      }
+
+      const [tutorResult, documentsResult] = await Promise.all([
+        supabase
+          .from('tutor_profiles')
+          .select('id,name,email,phone,location,subjects,hourly_rate,bio,profile_photo_url,is_approved,verification_status,is_test_account,created_at')
+          .eq('id', tutorId)
+          .maybeSingle(),
+        supabase
+          .from('tutor_documents')
+          .select('tutor_id,document_type,status,uploaded_at')
+          .eq('tutor_id', tutorId),
+      ])
+
+      if (tutorResult.error) throw tutorResult.error
+      if (documentsResult.error) throw documentsResult.error
+
+      const previewTutor = tutorResult.data as TutorRow | null
+      if (!previewTutor) return NextResponse.json({ error: 'Tutor not found.' }, { status: 404 })
+
+      const previewDocs = (documentsResult.data ?? []) as TutorDocumentRow[]
+      const requestedLevel = typeof body?.verificationStatus === 'string'
+        ? body.verificationStatus.trim().toLowerCase()
+        : ''
+
+      const email = buildTutorEmail(previewAction as TutorEmailAction, {
+        tutorName: previewTutor.name,
+        note: reason,
+        blockers: describeApprovalBlockers(previewTutor, previewDocs),
+        verificationStatus:
+          previewAction === 'vouch'
+            ? requestedLevel || 'qualification_verified'
+            : previewTutor.profile_photo_url &&
+                getTutorReviewPathFromApprovedDocumentTypes(
+                  Array.from(getLatestDocumentStatusByType(previewDocs).entries())
+                    .filter(([, status]) => status === 'approved')
+                    .map(([documentType]) => documentType)
+                )
+              ? 'profile_reviewed'
+              : 'basic',
+      })
+
+      return NextResponse.json({
+        preview: {
+          to: previewTutor.email || '(this tutor has no email address on file)',
+          subject: email.subject,
+          text: email.text,
+          usesYourNote: previewAction !== 'reject' ? Boolean(reason) : true,
+        },
+      })
+    }
 
     // Personal-authority override: approve a tutor and set their public trust
     // label from first-hand knowledge rather than uploaded documents. Restricted
@@ -298,15 +361,11 @@ export async function PATCH(request: Request) {
       if (vouchedTutor.email) {
         const vouchEmail = await sendEmail({
           to: vouchedTutor.email,
-          subject: 'Your TutorConnect tutor profile is approved',
-          text: composeEmail([
-            `Hi ${vouchedTutor.name || 'Tutor'},`,
-            '',
-            `Your tutor profile has been approved as ${requested.replace('_', ' ')}.`,
-            'Families can now find your profile and send booking requests.',
-            '',
-            'Adding a profile photo and your certificates keeps this label in place as we introduce document checks.',
-          ]),
+          ...buildTutorEmail('vouch', {
+            tutorName: vouchedTutor.name,
+            note: reason,
+            verificationStatus: requested,
+          }),
         })
         vouchEmailSent = vouchEmail.sent
       }
@@ -349,19 +408,11 @@ export async function PATCH(request: Request) {
 
       const result = await sendEmail({
         to: tutor.email,
-        subject: 'Your TutorConnect profile needs a few more details',
-        text: composeEmail([
-          `Hi ${tutor.name || 'Tutor'},`,
-          '',
-          'Thank you for applying to TutorConnect Gambia. We cannot list your profile publicly yet.',
-          ...(blockers.length > 0
-            ? ['', 'Still needed:', ...blockers.map((blocker) => `- ${blocker}`)]
-            : []),
-          ...(reason ? ['', reason] : []),
-          '',
-          'Sign in to your dashboard to update these, and we will review your profile again.',
-          `Questions: ${TUTOR_REVIEW_CONTACT_EMAIL}`,
-        ]),
+        ...buildTutorEmail('request_changes', {
+          tutorName: tutor.name,
+          note: reason,
+          blockers,
+        }),
       })
 
       await writeAdminAuditLog({
@@ -446,13 +497,11 @@ export async function PATCH(request: Request) {
       if (tutor.email) {
         const approvalEmail = await sendEmail({
           to: tutor.email,
-          subject: 'Your TutorConnect tutor profile is approved',
-          text: composeEmail([
-            `Hi ${tutor.name || 'Tutor'},`,
-            '',
-            `Your tutor profile has been approved as ${approvalOutcome.replace('_', ' ')}.`,
-            'Families can now find your profile and send booking requests.',
-          ]),
+          ...buildTutorEmail('approve', {
+            tutorName: tutor.name,
+            note: reason,
+            verificationStatus: approvalOutcome,
+          }),
         })
         approvalEmailSent = approvalEmail.sent
       }
@@ -493,17 +542,10 @@ export async function PATCH(request: Request) {
     if (rejectedTutor?.email) {
       const rejectionEmail = await sendEmail({
         to: rejectedTutor.email,
-        subject: 'TutorConnect profile review update',
-        text: composeEmail([
-          `Hi ${rejectedTutor.name || 'Tutor'},`,
-          '',
-          'We are not able to approve your tutor profile at this time.',
-          '',
-          `Reason: ${reason}`,
-          '',
-          'You can update your profile from your dashboard and reply to this email if you would like us to look again.',
-          `Questions: ${TUTOR_REVIEW_CONTACT_EMAIL}`,
-        ]),
+        ...buildTutorEmail('reject', {
+          tutorName: rejectedTutor.name,
+          note: reason,
+        }),
       })
       rejectionEmailSent = rejectionEmail.sent
     }
