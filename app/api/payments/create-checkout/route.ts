@@ -1,5 +1,7 @@
 import crypto from 'crypto'
 import { NextResponse } from 'next/server'
+import { reconcileBookingPayments, type PaymentRecord } from '@/lib/payment-reconciliation'
+import { validCheckoutUrl, type WaychitResponse } from '@/lib/waychit'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -27,20 +29,6 @@ interface BookingRow {
 interface TutorPackageRow {
   monthly_price: number
   additional_child_amount: number | null
-}
-
-interface WaychitPaymentRequestResponse {
-  success?: boolean
-  message?: string
-  paymentRequest?: {
-    id?: string
-    amount?: number
-    currency?: string
-    status?: string
-    waychitLaunchUrl?: string
-    successRedirectUrl?: string
-    failureRedirectUrl?: string
-  }
 }
 
 function createClientReference(bookingId: string) {
@@ -114,8 +102,19 @@ export async function POST(request: Request) {
     if (!booking.family_id) {
       return NextResponse.json({ error: 'Booking is missing a family account.' }, { status: 400 })
     }
+    const existingPayment = await reconcileBookingPayments(supabase, booking.id)
+    if (existingPayment?.status === 'completed') {
+      return NextResponse.json({ already_paid: true })
+    }
+    if (existingPayment?.status === 'pending') {
+      const link = validCheckoutUrl(existingPayment.checkout_url || undefined)
+      if (link && !existingPayment.verification_error && ['active', 'open'].includes(existingPayment.provider_status || '')) {
+        return NextResponse.json({ payment_link: link })
+      }
+      return NextResponse.json({ error: 'An earlier checkout is still unresolved. Please check payment status or contact support before paying again.' }, { status: 409 })
+    }
     if (booking.status !== 'confirmed') {
-      return NextResponse.json({ error: 'Only confirmed bookings can be paid.' }, { status: 400 })
+      return NextResponse.json({ error: 'Only accepted bookings awaiting payment can be paid.' }, { status: 400 })
     }
 
     // Recompute every charge from authoritative tutor/package data. This also
@@ -127,7 +126,7 @@ export async function POST(request: Request) {
       .maybeSingle<{ hourly_rate: number | null }>()
 
     if (tutorError) throw tutorError
-    if (!tutor || typeof tutor.hourly_rate !== 'number' || tutor.hourly_rate <= 0) {
+    if (!tutor || ((!booking.booking_type || booking.booking_type === 'monthly') && (!booking.pricing_model || booking.pricing_model === 'hourly') && (typeof tutor.hourly_rate !== 'number' || tutor.hourly_rate <= 0))) {
       return NextResponse.json({ error: 'This tutor cannot be booked right now.' }, { status: 400 })
     }
 
@@ -169,7 +168,7 @@ export async function POST(request: Request) {
               childrenCount: booking.children_count || 1,
             })
           : computeBookingCharge({
-              hourlyRate: tutor.hourly_rate,
+              hourlyRate: tutor.hourly_rate || 0,
               hoursPerMonth,
               childrenCount: booking.children_count || 1,
             })
@@ -214,66 +213,80 @@ export async function POST(request: Request) {
     }
 
     const clientReference = createClientReference(booking.id)
+    // Reserve before contacting Waychit. The partial unique index prevents two
+    // browser tabs or server instances from creating payable requests together.
+    const { data: attempt, error: reserveError } = await supabase.from('payments').insert({
+      booking_id: booking.id, family_id: booking.family_id,
+      amount: monthlyTotal, service_fee: serviceFee, total: grandTotal,
+      payment_method: 'waychit', status: 'pending', intent_secret: clientReference,
+      provider_kind: 'request', provider_status: 'creating',
+    }).select('*').single<PaymentRecord>()
+    if (reserveError?.code === '23505') {
+      return NextResponse.json({ error: 'A checkout is already being opened. Please wait a moment and check payment status.' }, { status: 409 })
+    }
+    if (reserveError) throw reserveError
 
-    const waychitResponse = await fetch(getWaychitApiUrl('/payment-requests'), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${waychitApiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        amount: grandTotal,
-        description: `Booking ${booking.id.slice(0, 8)} for ${
-          normalizeTutorSubjects(booking.subjects).join(', ') || 'tutoring lessons'
-        }`,
-        clientReference,
-        successRedirectUrl: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
-        failureRedirectUrl: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,
-      }),
-    })
-
-    const paymentRequest = (await waychitResponse.json()) as WaychitPaymentRequestResponse
-
-    if (!waychitResponse.ok || !paymentRequest.success) {
-      console.error('Waychit payment request failed', paymentRequest)
-      return NextResponse.json(
-        { error: 'Could not start payment. Please try again in a moment.' },
-        { status: 502 }
-      )
+    // A previous attempt may have completed between reconciliation and the
+    // reservation. Do not issue another provider request in that case.
+    const { data: paid, error: paidError } = await supabase.from('payments').select('id')
+      .eq('booking_id', booking.id).eq('status', 'completed').limit(1).maybeSingle()
+    if (paidError) throw paidError
+    if (paid) {
+      const { error: releaseError } = await supabase.from('payments').update({ status: 'cancelled', provider_status: 'not_created' }).eq('id', attempt.id)
+      if (releaseError) throw releaseError
+      return NextResponse.json({ already_paid: true })
     }
 
-    const providerPaymentId = paymentRequest.paymentRequest?.id || ''
-    const paymentLink = paymentRequest.paymentRequest?.waychitLaunchUrl || ''
-
-    if (!providerPaymentId || !paymentLink) {
-      console.error('Unexpected Waychit payment request response', paymentRequest)
-      return NextResponse.json(
-        { error: 'Could not start payment. Please try again in a moment.' },
-        { status: 502 }
-      )
+    try {
+      const response = await fetch(getWaychitApiUrl('/payment-requests'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${waychitApiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({
+          amount: grandTotal,
+          description: `Booking ${booking.id.slice(0, 8)} for ${normalizeTutorSubjects(booking.subjects).join(', ') || 'tutoring lessons'}`,
+          clientReference,
+          metadata: { bookingId: booking.id, paymentId: attempt.id },
+          successRedirectUrl: `${siteUrl}/payment/success?bookingId=${encodeURIComponent(booking.id)}`,
+          failureRedirectUrl: `${siteUrl}/payment/failed?bookingId=${encodeURIComponent(booking.id)}`,
+        }),
+      })
+      const payload = await response.json() as WaychitResponse
+      if (!response.ok || !payload.success) {
+        // A timeout, 5xx or malformed response may follow a successful creation.
+        // Only a definitive rejection allows another attempt automatically.
+        if (response.status >= 400 && response.status < 500 && payload.success === false) {
+          const { error } = await supabase.from('payments').update({ status: 'failed', provider_status: 'rejected' })
+            .eq('id', attempt.id).eq('status', 'pending')
+          if (error) throw error
+        }
+        throw new Error('Waychit could not create a verified checkout.')
+      }
+      const provider = payload.paymentRequest
+      const link = validCheckoutUrl(provider?.waychitLaunchUrl)
+      if (typeof provider?.id === 'string' && provider.id) {
+        const { error: referenceError } = await supabase.from('payments').update({ provider_payment_id: provider.id })
+          .eq('id', attempt.id).eq('status', 'pending')
+        if (referenceError) throw referenceError
+      }
+      if (!provider?.id || !link || provider.amount !== grandTotal || provider.currency?.toUpperCase() !== 'GMD') {
+        throw new Error('Waychit returned unexpected checkout details.')
+      }
+      const { error } = await supabase.from('payments').update({
+        provider_payment_id: provider.id, checkout_url: link,
+        provider_status: provider.status || 'active', verification_error: null,
+      }).eq('id', attempt.id).eq('status', 'pending')
+      if (error) throw error
+      return NextResponse.json({ payment_link: link })
+    } catch (error) {
+      const { error: saveError } = await supabase.from('payments').update({
+        verification_error: 'Checkout creation could not be confirmed. Check Waychit before starting another payment.',
+      }).eq('id', attempt.id).eq('status', 'pending')
+      if (saveError) console.error('Could not save checkout error', { paymentId: attempt.id })
+      throw error
     }
-
-    const { error: paymentInsertError } = await supabase.from('payments').insert({
-      booking_id: booking.id,
-      family_id: booking.family_id,
-      amount: monthlyTotal,
-      service_fee: serviceFee,
-      total: grandTotal,
-      payment_method: 'waychit',
-      status: 'pending',
-      intent_secret: clientReference,
-      provider_payment_id: providerPaymentId || null,
-    })
-
-    if (paymentInsertError) throw paymentInsertError
-
-    return NextResponse.json({
-      payment_link: paymentLink,
-    })
   } catch (error) {
     console.error('create-checkout route failed', error)
-
-    return NextResponse.json({ error: 'Could not create payment session.' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not open checkout safely. Check payment status or contact support before trying again.' }, { status: 502 })
   }
 }

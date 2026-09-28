@@ -95,12 +95,16 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString(),
         }
 
-    const { error: updateError } = await supabase
+    const { data: updatedBooking, error: updateError } = await supabase
       .from('bookings')
       .update(updatePayload)
       .eq('id', booking.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle<{ id: string }>()
 
     if (updateError) throw updateError
+    if (!updatedBooking) return NextResponse.json({ error: 'This booking has already been handled.' }, { status: 409 })
 
     if (booking.family_id) {
       const { data: family } = await supabase.auth.admin.getUserById(booking.family_id)

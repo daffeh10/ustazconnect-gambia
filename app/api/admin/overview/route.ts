@@ -1,3 +1,4 @@
+import { readAllRows } from '@/lib/database-pages'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdminContext, hasAdminRole } from '@/lib/admin'
@@ -18,7 +19,7 @@ interface TutorNameRow {
 
 function startOfMonthIso() {
   const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
 }
 
 export async function GET() {
@@ -38,6 +39,7 @@ export async function GET() {
       activeBookingsResult,
       lessonsThisMonthResult,
       revenueResult,
+      commissionsResult,
       recentBookingsResult,
     ] = await Promise.all([
       supabase.from('tutor_profiles').select('id', { count: 'exact', head: true }),
@@ -45,7 +47,8 @@ export async function GET() {
       supabase.from('family_profiles').select('id', { count: 'exact', head: true }),
       supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('lessons').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('completed_at', monthStart),
-      supabase.from('payments').select('total').eq('status', 'completed').gte('paid_at', monthStart),
+      readAllRows((start, end) => supabase.from('payments').select('total,service_fee').eq('status', 'completed').gte('paid_at', monthStart).order('id').range(start, end)),
+      readAllRows((start, end) => supabase.from('payouts').select('commission_deducted').eq('status', 'completed').gte('completed_at', monthStart).order('id').range(start, end)),
       supabase.from('bookings').select('id,family_name,tutor_id,status,grand_total,created_at').order('created_at', { ascending: false }).limit(10),
     ])
 
@@ -56,6 +59,7 @@ export async function GET() {
       activeBookingsResult.error,
       lessonsThisMonthResult.error,
       revenueResult.error,
+      commissionsResult.error,
       recentBookingsResult.error,
     ].filter(Boolean)
 
@@ -64,6 +68,9 @@ export async function GET() {
     }
 
     const bookings = (recentBookingsResult.data ?? []) as BookingRow[]
+    const recentPayments = bookings.length ? await readAllRows((start, end) => supabase.from('payments')
+      .select('booking_id,status,total').in('booking_id', bookings.map((booking) => booking.id))
+      .order('id').range(start, end)) : { data: [] }
     const uniqueTutorIds = Array.from(new Set(bookings.map((booking) => booking.tutor_id)))
     let tutorNames: Record<string, string> = {}
 
@@ -93,12 +100,20 @@ export async function GET() {
         totalFamilies: familiesResult.count ?? 0,
         activeBookings: activeBookingsResult.count ?? 0,
         revenueThisMonth,
+        serviceFeesThisMonth: (revenueResult.data || []).reduce((sum, payment) => sum + Number(payment.service_fee || 0), 0),
+        commissionsThisMonth: (commissionsResult.data || []).reduce((sum, payout) => sum + Number(payout.commission_deducted || 0), 0),
         lessonsThisMonth: lessonsThisMonthResult.count ?? 0,
       },
-      recentBookings: bookings.map((booking) => ({
-        ...booking,
-        tutor_name: tutorNames[booking.tutor_id] || 'Tutor',
-      })),
+      recentBookings: bookings.map((booking) => {
+        const attempts = recentPayments.data.filter((payment) => payment.booking_id === booking.id)
+        const paid = attempts.filter((payment) => payment.status === 'completed')
+        return {
+          ...booking,
+          tutor_name: tutorNames[booking.tutor_id] || 'Tutor',
+          payment_status: paid.length ? 'Paid' : attempts.length ? 'No verified payment' : 'No payment started',
+          amount_received: paid.reduce((total, payment) => total + Number(payment.total), 0),
+        }
+      }),
     })
   } catch (error) {
     console.error('admin overview failed', error)

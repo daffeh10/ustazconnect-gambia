@@ -326,7 +326,7 @@ export default function FamilyDashboardPage() {
 
   const latestPaymentsByBooking = payments.reduce<Record<string, PaymentRow>>((acc, payment) => {
     if (!payment.booking_id) return acc
-    if (!acc[payment.booking_id]) {
+    if (!acc[payment.booking_id] || payment.status === 'completed') {
       acc[payment.booking_id] = payment
     }
     return acc
@@ -404,14 +404,14 @@ export default function FamilyDashboardPage() {
 
         <section className="mt-8 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Confirmed Bookings</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Accepted — awaiting payment.</h2>
             <p className="text-sm text-gray-600 mt-1">
               Complete payment for tutor requests that have already been accepted.
             </p>
           </div>
 
           {confirmedBookings.length === 0 ? (
-            <p className="text-gray-600">No confirmed bookings are waiting for payment.</p>
+            <p className="text-gray-600">No accepted bookings are waiting for payment.</p>
           ) : (
             <div className="space-y-4">
               {confirmedBookings.map((booking) => {
@@ -429,7 +429,7 @@ export default function FamilyDashboardPage() {
                         </p>
                       </div>
                       <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
-                        Awaiting payment
+                        Accepted — awaiting payment.
                       </span>
                     </div>
 
@@ -448,6 +448,7 @@ export default function FamilyDashboardPage() {
                       </div>
                     </div>
 
+                    {!latestPayment && <p className="mt-3 text-sm text-gray-600">No payment has been started for this booking yet.</p>}
                     {latestPayment && (
                       <div className="mt-3 space-y-1 text-sm text-gray-500">
                         <p>
@@ -464,6 +465,7 @@ export default function FamilyDashboardPage() {
                     >
                       {getPaymentActionLabel(latestPaymentStatus)}
                     </Link>
+                    {latestPayment && <Link href={`/payment/success?bookingId=${booking.id}`} className="mt-3 inline-flex min-h-12 items-center px-3 font-medium text-emerald-700 underline">Check payment status</Link>}
                   </article>
                 )
               })}
@@ -496,6 +498,7 @@ export default function FamilyDashboardPage() {
                       {booking.booking_type === 'trial' ? 'Trial active' : 'Active'}
                     </span>
                   </div>
+                  <Link href={`/payment/success?bookingId=${booking.id}`} className="mt-3 inline-flex min-h-12 items-center text-emerald-700 underline">View payment receipt</Link>
                   {booking.booking_type === 'trial' && (
                     <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
                       {booking.trial_confirmed_at ? (

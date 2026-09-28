@@ -7,6 +7,10 @@ Format: `- YYYY-MM-DD — <the rule>. (why: <what went wrong>)`
 
 ---
 
+- 2026-09-28 — Hand Abdul one self-contained migration, never "run A before B"; fold prerequisite cleanup into the same transaction. (why: the reconcile script was skipped and the recovery migration aborted.)
+
+- 2026-09-28 — Before handing over a migration that adds unique payment indexes, preflight existing duplicates through read-only queries and prepare provider-verified reconciliation first. (why: historical pending checkouts blocked the recovery migration.)
+
 - 2026-06-29 — Never compute or trust money on the client; the server recomputes
   every charge from the tutor's authoritative rate. (why: booking rows are inserted
   from the browser and amounts were tamperable.)

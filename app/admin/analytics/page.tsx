@@ -105,7 +105,7 @@ export default function AdminAnalyticsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
         <p className="mt-2 text-gray-600">
-          Review signups, marketplace activity, lesson completion, revenue, and tutor distribution trends.
+          Review signups, marketplace activity, lesson completion, gross family payments, and tutor distribution trends.
         </p>
       </div>
 
@@ -165,7 +165,7 @@ export default function AdminAnalyticsPage() {
             )}
           </ChartCard>
 
-          <ChartCard title="Revenue Per Week (GMD)">
+          <ChartCard title="Family Payments Per Week (GMD)">
             {!data ? (
               <EmptyChartState error={noDataMessage} />
             ) : (

@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { bookingStatusLabel } from '@/lib/booking-status'
 import { useEffect, useState } from 'react'
 
 interface Metrics {
@@ -8,6 +10,8 @@ interface Metrics {
   totalFamilies: number
   activeBookings: number
   revenueThisMonth: number
+  serviceFeesThisMonth: number
+  commissionsThisMonth: number
   lessonsThisMonth: number
 }
 
@@ -18,6 +22,8 @@ interface RecentBooking {
   status: string | null
   grand_total: number
   created_at: string
+  payment_status: string
+  amount_received: number
 }
 
 function formatMoney(value: number) {
@@ -79,7 +85,9 @@ export default function AdminOverviewPage() {
     { label: 'Pending Approval', value: metrics?.pendingApproval ?? 0 },
     { label: 'Total Families', value: metrics?.totalFamilies ?? 0 },
     { label: 'Active Bookings', value: metrics?.activeBookings ?? 0 },
-    { label: 'Revenue This Month', value: formatMoney(metrics?.revenueThisMonth ?? 0) },
+    { label: 'Family Payments This Month', value: formatMoney(metrics?.revenueThisMonth ?? 0) },
+    { label: 'Family Service Fees Collected This Month', value: formatMoney(metrics?.serviceFeesThisMonth ?? 0) },
+    { label: 'Commission Deducted on Paid Payouts This Month', value: formatMoney(metrics?.commissionsThisMonth ?? 0) },
     { label: 'Lessons This Month', value: metrics?.lessonsThisMonth ?? 0 },
   ]
 
@@ -107,7 +115,8 @@ export default function AdminOverviewPage() {
 
       <section className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-2xl font-bold text-gray-900">Recent Bookings</h2>
-        <p className="text-sm text-gray-600 mt-1">Last 10 bookings across the platform.</p>
+        <Link href="/admin/payments" className="inline-flex min-h-12 items-center font-medium text-emerald-700 hover:underline">View payment history & fee breakdowns →</Link>
+        <p className="text-sm text-gray-600 mt-1">Last 10 bookings. Requested amounts are not proof of payment.</p>
 
         {isLoading ? (
           <p className="mt-6 text-gray-500">Loading bookings...</p>
@@ -121,17 +130,21 @@ export default function AdminOverviewPage() {
                   <th className="py-3 pr-4 font-medium">Family</th>
                   <th className="py-3 pr-4 font-medium">Tutor</th>
                   <th className="py-3 pr-4 font-medium">Status</th>
-                  <th className="py-3 pr-4 font-medium">Amount</th>
+                  <th className="py-3 pr-4 font-medium">Requested amount</th>
+                  <th className="py-3 pr-4 font-medium">Payment</th>
+                  <th className="py-3 pr-4 font-medium">Received</th>
                   <th className="py-3 font-medium">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {recentBookings.map((booking) => (
                   <tr key={booking.id} className="border-b border-gray-100 last:border-b-0">
-                    <td className="py-3 pr-4 text-gray-900">{booking.family_name}</td>
+                    <td className="py-3 pr-4 text-gray-900"><Link href={`/admin/payments?search=${booking.id}`} className="inline-flex min-h-12 items-center text-emerald-700 underline">{booking.family_name}</Link></td>
                     <td className="py-3 pr-4 text-gray-700">{booking.tutor_name}</td>
-                    <td className="py-3 pr-4 capitalize text-gray-700">{booking.status || 'pending'}</td>
+                    <td className="py-3 pr-4 text-gray-700">{booking.status === 'confirmed' && booking.amount_received > 0 ? 'Paid — activation pending' : bookingStatusLabel(booking.status)}</td>
                     <td className="py-3 pr-4 text-gray-900">{formatMoney(booking.grand_total)}</td>
+                    <td className="py-3 pr-4 text-gray-700">{booking.payment_status}</td>
+                    <td className="py-3 pr-4 text-gray-900">{formatMoney(booking.amount_received)}</td>
                     <td className="py-3 text-gray-700">{formatDate(booking.created_at)}</td>
                   </tr>
                 ))}

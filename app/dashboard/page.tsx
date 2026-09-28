@@ -1284,7 +1284,7 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
-                      Awaiting payment
+                      Accepted — awaiting payment.
                     </span>
                   </div>
                 </article>

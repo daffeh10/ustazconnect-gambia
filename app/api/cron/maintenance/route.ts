@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { composeEmail, sendEmail } from '@/lib/email'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queueTrialPayout } from '@/lib/trials'
+import { recoverPendingPayments } from '@/lib/payment-reconciliation'
 
 interface ReminderLesson {
   id: string
@@ -35,6 +36,15 @@ interface PendingBooking {
 // tutor after a day and release the family back to search after five.
 const PENDING_NUDGE_AFTER_HOURS = 24
 const PENDING_EXPIRY_AFTER_HOURS = 120
+// A tutor accepting is not a payment. Remind the family once, a day after
+// acceptance. Acceptances older than the window are treated as abandoned so old
+// test bookings are never emailed.
+const PAYMENT_REMINDER_AFTER_HOURS = 24
+const PAYMENT_REMINDER_WINDOW_DAYS = 14
+
+interface AcceptedBooking extends PendingBooking {
+  updated_at: string
+}
 
 function getSiteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://tutorconnectgambia.com').replace(/\/$/, '')
@@ -87,10 +97,18 @@ export async function GET(request: Request) {
     const autoConfirmCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000)
     const nudgeCutoff = new Date(now.getTime() - PENDING_NUDGE_AFTER_HOURS * 60 * 60 * 1000)
     const expiryCutoff = new Date(now.getTime() - PENDING_EXPIRY_AFTER_HOURS * 60 * 60 * 1000)
+    const paymentReminderCutoff = new Date(now.getTime() - PAYMENT_REMINDER_AFTER_HOURS * 60 * 60 * 1000)
+    const paymentReminderWindowStart = new Date(now.getTime() - PAYMENT_REMINDER_WINDOW_DAYS * 24 * 60 * 60 * 1000)
     const pendingSelect =
       'id,tutor_id,family_id,family_name,subjects,grand_total,created_at'
 
-    const [remindersResult, trialLessonsResult, staleBookingsResult, expiredBookingsResult] = await Promise.all([
+    const [
+      remindersResult,
+      trialLessonsResult,
+      staleBookingsResult,
+      expiredBookingsResult,
+      unpaidBookingsResult,
+    ] = await Promise.all([
       supabase
         .from('lessons')
         .select('id,booking_id,tutor_id,family_id,subject,scheduled_at,meeting_link')
@@ -118,6 +136,13 @@ export async function GET(request: Request) {
         .select(pendingSelect)
         .eq('status', 'pending')
         .lte('created_at', expiryCutoff.toISOString()),
+      supabase
+        .from('bookings')
+        .select(`${pendingSelect},updated_at`)
+        .eq('status', 'confirmed')
+        .is('payment_reminder_sent_at', null)
+        .lte('updated_at', paymentReminderCutoff.toISOString())
+        .gt('updated_at', paymentReminderWindowStart.toISOString()),
     ])
 
     if (remindersResult.error) throw remindersResult.error
@@ -128,6 +153,9 @@ export async function GET(request: Request) {
     const pendingChaseError = staleBookingsResult.error || expiredBookingsResult.error
     if (pendingChaseError) {
       console.error('pending booking chase skipped', pendingChaseError)
+    }
+    if (unpaidBookingsResult.error) {
+      console.error('payment reminders skipped', unpaidBookingsResult.error)
     }
 
     let remindersSent = 0
@@ -383,12 +411,57 @@ export async function GET(request: Request) {
       pendingBookingsExpired += 1
     }
 
+    // Remind families whose booking was accepted but never paid.
+    let paymentRemindersSent = 0
+    for (const booking of (unpaidBookingsResult.data ?? []) as AcceptedBooking[]) {
+      if (!booking.family_id) continue
+
+      const [{ data: tutor }, familyResult] = await Promise.all([
+        supabase
+          .from('tutor_profiles')
+          .select('name')
+          .eq('id', booking.tutor_id)
+          .maybeSingle<{ name: string | null }>(),
+        supabase.auth.admin.getUserById(booking.family_id),
+      ])
+      const familyEmail = familyResult.data.user?.email
+      if (!familyEmail) continue
+
+      const result = await sendEmail({
+        to: familyEmail,
+        subject: 'Complete payment to start your lessons',
+        text: composeEmail([
+          `Hi ${booking.family_name || 'there'},`,
+          '',
+          `${tutor?.name || 'Your tutor'} accepted your booking, but payment has not been completed yet. Lessons are scheduled once payment is received.`,
+          ...describeBooking(booking, { includeFamilyName: false }),
+          '',
+          `Pay securely here: ${getSiteUrl()}/payment/${booking.id}`,
+          'You can pay with mobile money or card. If you no longer need this booking, just reply and let us know.',
+        ]),
+      })
+
+      if (!result.sent) continue
+
+      const { error: paymentReminderError } = await supabase
+        .from('bookings')
+        .update({ payment_reminder_sent_at: now.toISOString() })
+        .eq('id', booking.id)
+        .is('payment_reminder_sent_at', null)
+
+      if (paymentReminderError) throw paymentReminderError
+      paymentRemindersSent += 1
+    }
+
+    const paymentRecovery = await recoverPendingPayments(supabase)
     return NextResponse.json({
       ok: true,
+      paymentRecovery,
       remindersSent,
       trialsAutoConfirmed,
       pendingNudgesSent,
       pendingBookingsExpired,
+      paymentRemindersSent,
     })
   } catch (error) {
     console.error('scheduled maintenance failed', error)

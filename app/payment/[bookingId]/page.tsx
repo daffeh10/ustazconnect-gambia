@@ -124,7 +124,12 @@ export default function PaymentPage() {
         body: JSON.stringify({ bookingId }),
       })
 
-      const payload = (await response.json()) as { payment_link?: string; error?: string }
+      const payload = (await response.json()) as { payment_link?: string; already_paid?: boolean; error?: string }
+
+      if (response.ok && payload.already_paid) {
+        router.push(`/payment/success?bookingId=${encodeURIComponent(bookingId)}`)
+        return
+      }
 
       if (!response.ok || !payload.payment_link) {
         throw new Error(payload.error || 'Could not start payment.')
@@ -142,7 +147,7 @@ export default function PaymentPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <div className="h-10 w-48 rounded-lg bg-gray-200 animate-pulse mx-auto mb-4" />
           <p className="text-base text-gray-600">Loading payment details...</p>
         </div>
       </div>
@@ -209,7 +214,7 @@ export default function PaymentPage() {
 
           {booking.status === 'confirmed' && (
             <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm">
-              You are about to open secure Waychit checkout. Once payment is completed, your booking will become active and your lesson plan will be created automatically.
+              Accepted — awaiting payment. You are about to open secure Waychit checkout. Once payment is completed, your booking will become active and your lesson plan will be created automatically.
             </div>
           )}
 
@@ -221,7 +226,7 @@ export default function PaymentPage() {
 
           {booking.status !== 'confirmed' && booking.status !== 'active' && (
             <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 text-sm">
-              This booking is currently marked as <span className="font-medium">{booking.status || 'unknown'}</span>. Only confirmed bookings can be paid.
+              This booking is currently marked as <span className="font-medium">{booking.status || 'unknown'}</span>. Only accepted bookings awaiting payment can be paid.
             </div>
           )}
 

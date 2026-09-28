@@ -40,6 +40,12 @@ export const PRICING = {
   minPaymentAmount: 5,
 } as const
 
+/** Expected allocation; commission is deducted as fulfilled lessons are paid out. */
+export function computeBookingAllocation(lessonAmount: number, serviceFee: number, isTrial: boolean) {
+  const commission = isTrial ? 0 : roundGmd(lessonAmount * PRICING.tutorCommissionRate)
+  return { commission, tutorShare: lessonAmount - commission, platformFees: serviceFee + commission }
+}
+
 /** All GMD amounts are whole dalasi; round consistently everywhere. */
 export function roundGmd(amount: number): number {
   return Math.round(amount)

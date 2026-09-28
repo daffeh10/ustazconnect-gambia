@@ -1,6 +1,8 @@
 -- =============================================================================
 -- TutorConnect Gambia — RLS hardening (TARGETED FIXES ONLY)
 -- =============================================================================
+-- Payment/booking write restrictions added September 2026 are in
+-- payment_recovery_manual.sql. Apply that migration before deploying recovery.
 --
 -- CONTEXT
 -- A live audit (June 2026) confirmed RLS is ENABLED on every public table and

@@ -1,3 +1,4 @@
+import { readAllRows } from '@/lib/database-pages'
 import { NextResponse } from 'next/server'
 import { normalizeTutorSubjects } from '@/lib/tutor-subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -125,7 +126,7 @@ export async function GET() {
       supabase.from('tutor_profiles').select('created_at,subjects,location'),
       supabase.from('family_profiles').select('created_at'),
       supabase.from('lessons').select('completed_at').eq('status', 'completed'),
-      supabase.from('payments').select('paid_at,total').eq('status', 'completed'),
+      readAllRows((start, end) => supabase.from('payments').select('paid_at,total').eq('status', 'completed').order('id').range(start, end)),
       supabase
         .from('funnel_events')
         .select('event_name,properties,created_at')

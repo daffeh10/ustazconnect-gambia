@@ -10,6 +10,7 @@ type AdminRole = 'owner' | 'admin' | 'quran_verifier'
 
 const NAV_ITEMS: Array<{ href: string; label: string; roles: AdminRole[] }> = [
   { href: '/admin', label: 'Overview', roles: ['owner', 'admin'] },
+  { href: '/admin/payments', label: 'Bookings & payments', roles: ['owner', 'admin'] },
   { href: '/admin/tutors', label: 'Tutors', roles: ['owner', 'admin'] },
   { href: '/admin/documents', label: 'Documents', roles: ['owner', 'admin'] },
   { href: '/admin/reports', label: 'Reports', roles: ['owner', 'admin'] },
