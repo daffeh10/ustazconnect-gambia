@@ -48,3 +48,10 @@ next-env.d.ts
 # sensitive business documents — must never be committed
 *business_registration*
 *_cert_*.jpeg
+
+# local-only working files (kept on disk, not in git)
+/TASKS_old.md
+/claude-code-playbook.md
+/design-prototypes/
+/marketing/
+/supabase/reconcile_expired_waychit_20260928_manual.sql
