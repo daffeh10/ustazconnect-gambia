@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const page = Math.max(1, Math.min(100_000, Number.parseInt(params.get('page') || '1', 10) || 1))
     const search = (params.get('search') || '').trim().slice(0, 120)
     const db = createAdminClient()
-    let query = db.from('bookings').select('id,family_name,tutor_id,status,grand_total,monthly_total,service_fee,booking_type,created_at', { count: 'exact' })
+    let query = db.from('bookings').select('id,family_name,tutor_id,status,grand_total,monthly_total,service_fee,booking_type,created_at,payment_reminder_sent_at', { count: 'exact' })
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search)) query = query.eq('id', search)
     else if (search) query = query.ilike('family_name', `%${search.replace(/[\\%_]/g, '\\$&')}%`)
     const { data, error, count } = await query.order('created_at', { ascending: false }).order('id').range((page - 1) * 20, page * 20 - 1)

@@ -19,6 +19,8 @@ function PaymentsContent() {
   const [error, setError] = useState('')
   const [checking, setChecking] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [messageIsError, setMessageIsError] = useState(false)
+  const [reminding, setReminding] = useState<string | null>(null)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -48,10 +50,28 @@ function PaymentsContent() {
       const response = await fetch('/api/admin/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentId }) })
       const payload = await response.json() as { message?: string; error?: string }
       if (!response.ok) throw new Error(payload.error || 'Payment check failed.')
+      setMessageIsError(false)
       setMessage(payload.message || 'Payment checked.')
     } catch (error) {
+      setMessageIsError(true)
       setMessage(error instanceof Error ? error.message : 'Payment check failed.')
     } finally { await load(); setChecking(null) }
+  }
+
+  async function remind(booking: AdminPaymentBooking) {
+    if (!window.confirm(`Email ${booking.family_name} a reminder to pay ${money(booking.grand_total)}?`)) return
+    setReminding(booking.id)
+    setMessage('')
+    try {
+      const response = await fetch('/api/admin/payments/reminder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: booking.id }) })
+      const payload = await response.json() as { message?: string; error?: string }
+      if (!response.ok) throw new Error(payload.error || 'Could not send the payment reminder.')
+      setMessageIsError(false)
+      setMessage(payload.message || 'Payment reminder sent.')
+    } catch (error) {
+      setMessageIsError(true)
+      setMessage(error instanceof Error ? error.message : 'Could not send the payment reminder.')
+    } finally { await load(); setReminding(null) }
   }
 
   function submit(event: FormEvent) { event.preventDefault(); setPage(1); setQuery(search.trim()) }
@@ -65,7 +85,7 @@ function PaymentsContent() {
       <button className="min-h-12 self-end rounded-lg bg-emerald-600 px-6 text-white hover:bg-emerald-700">Search</button>
       <button type="button" onClick={() => void load()} disabled={loading} className="min-h-12 self-end rounded-lg border border-gray-300 px-5 disabled:opacity-50">Refresh</button>
     </form>
-    {message && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">{message}</p>}
+    {message && <p role={messageIsError ? 'alert' : 'status'} className={messageIsError ? 'rounded-xl border border-red-200 bg-red-50 p-4 text-red-800' : 'rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900'}>{message}</p>}
     {error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error}</p>
       : loading ? <div aria-label="Loading payments" className="space-y-4 animate-pulse">{[1, 2, 3].map((id) => <div key={id} className="h-48 rounded-xl bg-gray-200" />)}</div>
       : bookings.length === 0 ? <p className="rounded-xl border border-gray-100 bg-white p-6 text-gray-600">No bookings match this search.</p>
@@ -76,6 +96,10 @@ function PaymentsContent() {
           <div className="space-y-1 text-sm"><p className="font-medium text-gray-700">{booking.status === 'confirmed' && booking.amountReceived > 0 ? 'Paid — activation pending' : bookingStatusLabel(booking.status)}</p>
             <p className={booking.amountReceived > 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>{booking.paymentLabel}</p></div>
         </div>
+        {booking.status === 'confirmed' && booking.amountReceived === 0 && <div className="mt-4 flex flex-col gap-3 rounded-lg bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-amber-900">Accepted by the tutor but not paid. {booking.payment_reminder_sent_at ? `Last payment reminder: ${date(booking.payment_reminder_sent_at)}.` : 'No payment reminder sent yet.'}</p>
+          <button onClick={() => void remind(booking)} disabled={reminding !== null || checking !== null} className="min-h-12 shrink-0 rounded-lg bg-emerald-600 px-4 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{reminding === booking.id ? 'Sending…' : 'Send payment reminder'}</button>
+        </div>}
         {booking.needsReview && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Needs review. {booking.duplicatePayment ? 'More than one successful payment exists. Reconcile the extra payment before any refund or payout.' : 'Check the payment history and booking activation below.'}</p>}
         <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[

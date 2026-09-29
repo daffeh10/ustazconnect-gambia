@@ -302,3 +302,43 @@ test('payment reminder emails only recently accepted unpaid bookings, once', asy
   assert.equal(second.paymentRemindersSent, 0)
   assert.equal(sent.length, 1)
 })
+
+test('admin payment reminder: admin only, unpaid only, rate limited, records send time', async () => {
+  const minutesAgo = (m) => new Date(Date.now() - m * 60 * 1000).toISOString()
+  const unpaid = { ...booking, id: 'unpaid', family_name: 'Family', payment_reminder_sent_at: minutesAgo(26 * 60) }
+  const s = setup({
+    bookings: [unpaid, { ...booking, id: 'paid-booking' }, { ...booking, id: 'just-reminded', payment_reminder_sent_at: minutesAgo(5) }, { ...booking, id: 'active', status: 'active' }],
+    payments: [{ ...payment, booking_id: 'paid-booking', status: 'completed' }],
+    tutor_profiles: [{ id: 'tutor', name: 'Tutor T.' }],
+  })
+  s.db.auth.admin.getUserById = async () => ({ data: { user: { email: 'family@example.test' } } })
+  const sent = []
+  let emailResult = { sent: true, skipped: false }
+  const audit = []
+  const post = (isAdmin, bookingId) => load('app/api/admin/payments/reminder/route.ts', {
+    ...s.mocks,
+    '@/lib/admin': { getAdminContext: async () => ({ admin: isAdmin ? { id: 'admin' } : null }), hasAdminRole: (admin) => Boolean(admin) },
+    '@/lib/admin-audit': { writeAdminAuditLog: async (entry) => { audit.push(entry) } },
+    '@/lib/email': { composeEmail: (lines) => lines.join('\n'), sendEmail: async (input) => { sent.push(input); return emailResult } },
+  }).POST(new Request('http://test', { method: 'POST', body: JSON.stringify({ bookingId }) }))
+
+  assert.equal((await post(false, 'unpaid')).status, 403)
+  assert.equal((await post(true, 'paid-booking')).status, 409)
+  assert.equal((await post(true, 'active')).status, 409)
+  assert.equal((await post(true, 'just-reminded')).status, 429)
+  assert.equal((await post(true, 'missing')).status, 404)
+  assert.equal(sent.length, 0)
+
+  const previousReminder = unpaid.payment_reminder_sent_at
+  emailResult = { sent: false, skipped: true }
+  assert.equal((await post(true, 'unpaid')).status, 502)
+  assert.equal(unpaid.payment_reminder_sent_at, previousReminder)
+
+  emailResult = { sent: true, skipped: false }
+  const response = await post(true, 'unpaid')
+  assert.equal(response.status, 200)
+  assert.match(sent.at(-1).text, /\/payment\/unpaid/)
+  assert.equal(audit.length, 1)
+  assert.notEqual(unpaid.payment_reminder_sent_at, previousReminder)
+  assert.equal((await post(true, 'unpaid')).status, 429)
+})

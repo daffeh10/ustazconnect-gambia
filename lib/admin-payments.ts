@@ -11,6 +11,7 @@ export interface AdminBooking {
   service_fee: number
   booking_type: string | null
   created_at: string
+  payment_reminder_sent_at: string | null
 }
 
 export function summarizeBookingPayments(booking: AdminBooking, payments: PaymentRecord[]) {

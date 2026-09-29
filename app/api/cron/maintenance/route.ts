@@ -3,6 +3,7 @@ import { composeEmail, sendEmail } from '@/lib/email'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queueTrialPayout } from '@/lib/trials'
 import { recoverPendingPayments } from '@/lib/payment-reconciliation'
+import { sendPaymentReminderEmail } from '@/lib/payment-reminders'
 
 interface ReminderLesson {
   id: string
@@ -42,9 +43,6 @@ const PENDING_EXPIRY_AFTER_HOURS = 120
 const PAYMENT_REMINDER_AFTER_HOURS = 24
 const PAYMENT_REMINDER_WINDOW_DAYS = 14
 
-interface AcceptedBooking extends PendingBooking {
-  updated_at: string
-}
 
 function getSiteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://tutorconnectgambia.com').replace(/\/$/, '')
@@ -138,7 +136,7 @@ export async function GET(request: Request) {
         .lte('created_at', expiryCutoff.toISOString()),
       supabase
         .from('bookings')
-        .select(`${pendingSelect},updated_at`)
+        .select(pendingSelect)
         .eq('status', 'confirmed')
         .is('payment_reminder_sent_at', null)
         .lte('updated_at', paymentReminderCutoff.toISOString())
@@ -413,34 +411,8 @@ export async function GET(request: Request) {
 
     // Remind families whose booking was accepted but never paid.
     let paymentRemindersSent = 0
-    for (const booking of (unpaidBookingsResult.data ?? []) as AcceptedBooking[]) {
-      if (!booking.family_id) continue
-
-      const [{ data: tutor }, familyResult] = await Promise.all([
-        supabase
-          .from('tutor_profiles')
-          .select('name')
-          .eq('id', booking.tutor_id)
-          .maybeSingle<{ name: string | null }>(),
-        supabase.auth.admin.getUserById(booking.family_id),
-      ])
-      const familyEmail = familyResult.data.user?.email
-      if (!familyEmail) continue
-
-      const result = await sendEmail({
-        to: familyEmail,
-        subject: 'Complete payment to start your lessons',
-        text: composeEmail([
-          `Hi ${booking.family_name || 'there'},`,
-          '',
-          `${tutor?.name || 'Your tutor'} accepted your booking, but payment has not been completed yet. Lessons are scheduled once payment is received.`,
-          ...describeBooking(booking, { includeFamilyName: false }),
-          '',
-          `Pay securely here: ${getSiteUrl()}/payment/${booking.id}`,
-          'You can pay with mobile money or card. If you no longer need this booking, just reply and let us know.',
-        ]),
-      })
-
+    for (const booking of (unpaidBookingsResult.data ?? []) as PendingBooking[]) {
+      const result = await sendPaymentReminderEmail(supabase, booking)
       if (!result.sent) continue
 
       const { error: paymentReminderError } = await supabase
